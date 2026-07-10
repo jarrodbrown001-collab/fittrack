@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
 import { Modal } from '../components/Modal'
 import { ExerciseLibraryModal } from '../components/ExerciseLibraryModal'
 import {
@@ -12,7 +11,6 @@ import {
 import type { Exercise, PlanType, WorkoutPlan } from '../types/database'
 
 export function Plans() {
-  const { user } = useAuth()
   const navigate = useNavigate()
   const [plans, setPlans] = useState<WorkoutPlan[]>([])
   const [exercises, setExercises] = useState<Exercise[]>([])
@@ -21,13 +19,9 @@ export function Plans() {
   const [showLibrary, setShowLibrary] = useState(false)
 
   const load = async () => {
-    if (!user) return
     setLoading(true)
     try {
-      const [planList, exerciseList] = await Promise.all([
-        listWorkoutPlans(user.id),
-        listExercises(user.id),
-      ])
+      const [planList, exerciseList] = await Promise.all([listWorkoutPlans(), listExercises()])
       setPlans(planList)
       setExercises(exerciseList)
     } finally {
@@ -37,10 +31,7 @@ export function Plans() {
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
-
-  if (!user) return null
+  }, [])
 
   return (
     <div className="space-y-4">
@@ -103,13 +94,10 @@ export function Plans() {
         </ul>
       )}
 
-      {showNewPlan && (
-        <NewPlanModal userId={user.id} onClose={() => setShowNewPlan(false)} onCreated={load} />
-      )}
+      {showNewPlan && <NewPlanModal onClose={() => setShowNewPlan(false)} onCreated={load} />}
       {showLibrary && (
         <ExerciseLibraryModal
           exercises={exercises}
-          userId={user.id}
           onClose={() => setShowLibrary(false)}
           onChange={load}
         />
@@ -118,15 +106,7 @@ export function Plans() {
   )
 }
 
-function NewPlanModal({
-  userId,
-  onClose,
-  onCreated,
-}: {
-  userId: string
-  onClose: () => void
-  onCreated: () => void
-}) {
+function NewPlanModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [type, setType] = useState<PlanType>('strength')
@@ -135,7 +115,6 @@ function NewPlanModal({
   const create = async () => {
     if (!name.trim()) return
     const plan = await createWorkoutPlan({
-      user_id: userId,
       name,
       type,
       schedule_notes: notes || null,

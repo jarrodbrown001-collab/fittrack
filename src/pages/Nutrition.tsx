@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useAuth } from '../hooks/useAuth'
+import { useProfile } from '../hooks/useProfile'
 import { Modal } from '../components/Modal'
 import { ProgressBar } from '../components/ProgressBar'
 import {
@@ -31,7 +31,7 @@ function totalsFor(logs: FoodLogWithFood[]) {
 }
 
 export function Nutrition() {
-  const { user, profile } = useAuth()
+  const { profile } = useProfile()
   const [date, setDate] = useState(todayStr())
   const [foods, setFoods] = useState<Food[]>([])
   const [logs, setLogs] = useState<FoodLogWithFood[]>([])
@@ -40,12 +40,11 @@ export function Nutrition() {
   const [showLogFood, setShowLogFood] = useState<Meal | null>(null)
 
   const load = async () => {
-    if (!user) return
     setLoading(true)
     try {
       const [foodList, logList] = await Promise.all([
-        listFoods(user.id),
-        listFoodLogsInRange(user.id, date, date),
+        listFoods(),
+        listFoodLogsInRange(date, date),
       ])
       setFoods(foodList)
       setLogs(logList)
@@ -57,7 +56,7 @@ export function Nutrition() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, date])
+  }, [date])
 
   const totals = useMemo(() => totalsFor(logs), [logs])
 
@@ -72,7 +71,7 @@ export function Nutrition() {
     return map
   }, [logs])
 
-  if (!user || !profile) return null
+  if (!profile) return null
 
   return (
     <div className="space-y-6">
@@ -188,19 +187,13 @@ export function Nutrition() {
       )}
 
       {showAddFood && (
-        <ManageFoodsModal
-          foods={foods}
-          userId={user.id}
-          onClose={() => setShowAddFood(false)}
-          onChange={load}
-        />
+        <ManageFoodsModal foods={foods} onClose={() => setShowAddFood(false)} onChange={load} />
       )}
 
       {showLogFood && (
         <LogFoodModal
           meal={showLogFood}
           foods={foods}
-          userId={user.id}
           date={date}
           onClose={() => setShowLogFood(null)}
           onLogged={load}
@@ -212,12 +205,10 @@ export function Nutrition() {
 
 function ManageFoodsModal({
   foods,
-  userId,
   onClose,
   onChange,
 }: {
   foods: Food[]
-  userId: string
   onClose: () => void
   onChange: () => void
 }) {
@@ -233,7 +224,7 @@ function ManageFoodsModal({
 
   const add = async () => {
     if (!form.name.trim()) return
-    await createFood({ ...form, user_id: userId })
+    await createFood(form)
     setForm({
       name: '',
       serving_size: 1,
@@ -337,14 +328,12 @@ function ManageFoodsModal({
 function LogFoodModal({
   meal,
   foods,
-  userId,
   date,
   onClose,
   onLogged,
 }: {
   meal: Meal
   foods: Food[]
-  userId: string
   date: string
   onClose: () => void
   onLogged: () => void
@@ -354,7 +343,7 @@ function LogFoodModal({
 
   const log = async () => {
     if (!foodId) return
-    await createFoodLog({ user_id: userId, food_id: foodId, logged_date: date, meal, quantity })
+    await createFoodLog({ food_id: foodId, logged_date: date, meal, quantity })
     onLogged()
     onClose()
   }

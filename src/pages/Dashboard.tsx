@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useAuth } from '../hooks/useAuth'
+import { useProfile } from '../hooks/useProfile'
 import {
   listBodyMetricsInRange,
   listFoodLogsInRange,
@@ -38,7 +38,7 @@ function mondayOf(dateStr: string): string {
 }
 
 export function Dashboard() {
-  const { user, profile } = useAuth()
+  const { profile } = useProfile()
   const dark = usePrefersDark()
   const colors = categoricalColors(dark)
   const chrome = chartChrome(dark)
@@ -50,13 +50,12 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true)
 
   const load = async () => {
-    if (!user) return
     setLoading(true)
     try {
       const [fl, wl, bm] = await Promise.all([
-        listFoodLogsInRange(user.id, daysAgoStr(NUTRITION_DAYS - 1), todayStr()),
-        listWorkoutLogsInRange(user.id, daysAgoStr(WORKOUT_WEEKS * 7 - 1), todayStr()),
-        listBodyMetricsInRange(user.id, daysAgoStr(BODY_DAYS - 1), todayStr()),
+        listFoodLogsInRange(daysAgoStr(NUTRITION_DAYS - 1), todayStr()),
+        listWorkoutLogsInRange(daysAgoStr(WORKOUT_WEEKS * 7 - 1), todayStr()),
+        listBodyMetricsInRange(daysAgoStr(BODY_DAYS - 1), todayStr()),
       ])
       setFoodLogs(fl)
       setWorkoutLogs(wl)
@@ -68,8 +67,7 @@ export function Dashboard() {
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [])
 
   const nutritionSeries = useMemo(() => {
     const byDate: Record<string, { calories: number; protein_g: number; carbs_g: number; fat_g: number }> = {}
@@ -115,12 +113,11 @@ export function Dashboard() {
       }))
   }, [bodyMetrics, profile])
 
-  if (!user || !profile) return null
+  if (!profile) return null
 
   const logWeight = async () => {
     if (!weightInput) return
     await upsertBodyMetric({
-      user_id: user.id,
       logged_date: todayStr(),
       weight: displayToKg(Number(weightInput), profile.unit_system),
       body_fat_pct: null,

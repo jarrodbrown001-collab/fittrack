@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
+import { useProfile } from '../hooks/useProfile'
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
@@ -10,7 +10,13 @@ const navItems = [
 ]
 
 export function Layout() {
-  const { profile, signOut } = useAuth()
+  const { profile, loading } = useProfile()
+
+  if (loading || !profile) {
+    return (
+      <div className="flex h-screen items-center justify-center text-slate-500">Loading…</div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -37,17 +43,9 @@ export function Layout() {
               </NavLink>
             ))}
           </nav>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-500 dark:text-slate-400">
-              {profile?.display_name}
-            </span>
-            <button
-              onClick={signOut}
-              className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
-            >
-              Sign out
-            </button>
-          </div>
+          <span className="text-sm text-slate-500 dark:text-slate-400">
+            {profile.display_name}
+          </span>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6">

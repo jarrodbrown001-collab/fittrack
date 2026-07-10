@@ -20,7 +20,6 @@ export type Profile = {
 
 export type Food = {
   id: string
-  user_id: string
   name: string
   serving_size: number
   serving_unit: string
@@ -33,7 +32,6 @@ export type Food = {
 
 export type FoodLog = {
   id: string
-  user_id: string
   food_id: string
   logged_date: string
   meal: Meal
@@ -43,7 +41,6 @@ export type FoodLog = {
 
 export type Exercise = {
   id: string
-  user_id: string
   name: string
   category: ExerciseCategory
   muscle_group: string | null
@@ -53,7 +50,6 @@ export type Exercise = {
 
 export type WorkoutPlan = {
   id: string
-  user_id: string
   name: string
   type: PlanType
   schedule_notes: string | null
@@ -75,7 +71,6 @@ export type PlanExercise = {
 
 export type WorkoutLog = {
   id: string
-  user_id: string
   plan_id: string | null
   logged_date: string
   duration_min: number | null
@@ -97,7 +92,6 @@ export type WorkoutLogSet = {
 
 export type BodyMetric = {
   id: string
-  user_id: string
   logged_date: string
   weight: number | null
   body_fat_pct: number | null
@@ -116,21 +110,21 @@ export type Database = {
   public: {
     Tables: {
       profiles: TableDef<Profile, Profile, Partial<Omit<Profile, 'id'>>>
-      foods: TableDef<Food, Omit<Food, 'id' | 'created_at'>, Partial<Omit<Food, 'id' | 'user_id'>>>
+      foods: TableDef<Food, Omit<Food, 'id' | 'created_at'>, Partial<Omit<Food, 'id'>>>
       food_logs: TableDef<
         FoodLog,
         Omit<FoodLog, 'id' | 'created_at'>,
-        Partial<Omit<FoodLog, 'id' | 'user_id'>>
+        Partial<Omit<FoodLog, 'id'>>
       >
       exercises: TableDef<
         Exercise,
         Omit<Exercise, 'id' | 'created_at'>,
-        Partial<Omit<Exercise, 'id' | 'user_id'>>
+        Partial<Omit<Exercise, 'id'>>
       >
       workout_plans: TableDef<
         WorkoutPlan,
         Omit<WorkoutPlan, 'id' | 'created_at'>,
-        Partial<Omit<WorkoutPlan, 'id' | 'user_id'>>
+        Partial<Omit<WorkoutPlan, 'id'>>
       >
       plan_exercises: TableDef<
         PlanExercise,
@@ -140,7 +134,7 @@ export type Database = {
       workout_logs: TableDef<
         WorkoutLog,
         Omit<WorkoutLog, 'id' | 'created_at'>,
-        Partial<Omit<WorkoutLog, 'id' | 'user_id'>>
+        Partial<Omit<WorkoutLog, 'id'>>
       >
       workout_log_sets: TableDef<
         WorkoutLogSet,
@@ -150,7 +144,7 @@ export type Database = {
       body_metrics: TableDef<
         BodyMetric,
         Omit<BodyMetric, 'id' | 'created_at'>,
-        Partial<Omit<BodyMetric, 'id' | 'user_id'>>
+        Partial<Omit<BodyMetric, 'id'>>
       >
     }
     Views: Record<string, never>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
+import { useProfile } from '../hooks/useProfile'
 import { Modal } from '../components/Modal'
 import {
   addWorkoutLogSet,
@@ -28,7 +28,7 @@ import type { Exercise, WorkoutLog, WorkoutPlan } from '../types/database'
 
 export function WorkoutSession() {
   const { workoutLogId } = useParams<{ workoutLogId: string }>()
-  const { user, profile } = useAuth()
+  const { profile } = useProfile()
   const navigate = useNavigate()
   const [log, setLog] = useState<WorkoutLog | null>(null)
   const [plan, setPlan] = useState<WorkoutPlan | null>(null)
@@ -38,10 +38,10 @@ export function WorkoutSession() {
   const [showAddExercise, setShowAddExercise] = useState(false)
 
   const load = async () => {
-    if (!workoutLogId || !user) return
+    if (!workoutLogId) return
     const l = await getWorkoutLog(workoutLogId)
     setLog(l)
-    const [s, exs] = await Promise.all([listWorkoutLogSets(workoutLogId), listExercises(user.id)])
+    const [s, exs] = await Promise.all([listWorkoutLogSets(workoutLogId), listExercises()])
     setSets(s)
     setExercises(exs)
     if (l.plan_id) {
@@ -54,7 +54,7 @@ export function WorkoutSession() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workoutLogId, user])
+  }, [workoutLogId])
 
   const setsByExercise = useMemo(() => {
     const map: Record<string, WorkoutLogSetWithExercise[]> = {}
@@ -65,7 +65,7 @@ export function WorkoutSession() {
     return map
   }, [sets])
 
-  if (!log || !profile || !user) return <p className="text-sm text-slate-500">Loading…</p>
+  if (!log || !profile) return <p className="text-sm text-slate-500">Loading…</p>
 
   const system = profile.unit_system
 

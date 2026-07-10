@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
+import { useProfile } from '../hooks/useProfile'
 import { Modal } from '../components/Modal'
 import {
   addPlanExercise,
@@ -17,7 +17,7 @@ import type { Exercise, WorkoutPlan } from '../types/database'
 
 export function PlanDetail() {
   const { planId } = useParams<{ planId: string }>()
-  const { user, profile } = useAuth()
+  const { profile } = useProfile()
   const navigate = useNavigate()
   const [plan, setPlan] = useState<WorkoutPlan | null>(null)
   const [planExercises, setPlanExercises] = useState<PlanExerciseWithExercise[]>([])
@@ -26,11 +26,11 @@ export function PlanDetail() {
   const [starting, setStarting] = useState(false)
 
   const load = async () => {
-    if (!planId || !user) return
+    if (!planId) return
     const [p, pes, exs] = await Promise.all([
       getWorkoutPlan(planId),
       listPlanExercises(planId),
-      listExercises(user.id),
+      listExercises(),
     ])
     setPlan(p)
     setPlanExercises(pes)
@@ -40,14 +40,13 @@ export function PlanDetail() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planId, user])
+  }, [planId])
 
   const startSession = async () => {
-    if (!user || !plan) return
+    if (!plan) return
     setStarting(true)
     try {
       const log = await createWorkoutLog({
-        user_id: user.id,
         plan_id: plan.id,
         logged_date: todayStr(),
         duration_min: null,

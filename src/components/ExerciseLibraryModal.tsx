@@ -5,12 +5,10 @@ import type { Exercise, ExerciseCategory } from '../types/database'
 
 export function ExerciseLibraryModal({
   exercises,
-  userId,
   onClose,
   onChange,
 }: {
   exercises: Exercise[]
-  userId: string
   onClose: () => void
   onChange: () => void
 }) {
@@ -24,7 +22,6 @@ export function ExerciseLibraryModal({
   const add = async () => {
     if (!form.name.trim()) return
     await createExercise({
-      user_id: userId,
       name: form.name,
       category: form.category,
       muscle_group: form.category === 'strength' ? form.muscle_group || null : null,

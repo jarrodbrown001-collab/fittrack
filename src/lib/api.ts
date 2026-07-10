@@ -12,27 +12,27 @@ import type {
   WorkoutPlan,
 } from '../types/database'
 
+export const PROFILE_ID = '00000000-0000-0000-0000-000000000001'
+
 function unwrap<T>({ data, error }: { data: T | null; error: { message: string } | null }): T {
   if (error) throw new Error(error.message)
   return data as T
 }
 
-// ── profiles ──────────────────────────────────────────────
-export async function updateProfile(userId: string, patch: Partial<Omit<Profile, 'id'>>) {
+// ── profile (singleton) ──────────────────────────────────────
+export async function getProfile(): Promise<Profile> {
+  return unwrap(await supabase.from('profiles').select('*').eq('id', PROFILE_ID).single())
+}
+
+export async function updateProfile(patch: Partial<Omit<Profile, 'id'>>) {
   return unwrap(
-    await supabase.from('profiles').update(patch).eq('id', userId).select('*').single()
+    await supabase.from('profiles').update(patch).eq('id', PROFILE_ID).select('*').single()
   )
 }
 
 // ── foods ─────────────────────────────────────────────────
-export async function listFoods(userId: string): Promise<Food[]> {
-  return unwrap(
-    await supabase
-      .from('foods')
-      .select('*')
-      .eq('user_id', userId)
-      .order('name', { ascending: true })
-  )
+export async function listFoods(): Promise<Food[]> {
+  return unwrap(await supabase.from('foods').select('*').order('name', { ascending: true }))
 }
 
 export async function createFood(food: Omit<Food, 'id' | 'created_at'>): Promise<Food> {
@@ -47,22 +47,17 @@ export async function deleteFood(id: string) {
 // ── food logs ─────────────────────────────────────────────
 export type FoodLogWithFood = FoodLog & { food: Food }
 
-export async function listFoodLogsForDate(
-  userId: string,
-  date: string
-): Promise<FoodLogWithFood[]> {
+export async function listFoodLogsForDate(date: string): Promise<FoodLogWithFood[]> {
   return unwrap(
     await supabase
       .from('food_logs')
       .select('*, food:foods(*)')
-      .eq('user_id', userId)
       .eq('logged_date', date)
       .order('created_at', { ascending: true })
   )
 }
 
 export async function listFoodLogsInRange(
-  userId: string,
   startDate: string,
   endDate: string
 ): Promise<FoodLogWithFood[]> {
@@ -70,14 +65,12 @@ export async function listFoodLogsInRange(
     await supabase
       .from('food_logs')
       .select('*, food:foods(*)')
-      .eq('user_id', userId)
       .gte('logged_date', startDate)
       .lte('logged_date', endDate)
   )
 }
 
 export async function createFoodLog(log: {
-  user_id: string
   food_id: string
   logged_date: string
   meal: Meal
@@ -92,14 +85,8 @@ export async function deleteFoodLog(id: string) {
 }
 
 // ── exercises ─────────────────────────────────────────────
-export async function listExercises(userId: string): Promise<Exercise[]> {
-  return unwrap(
-    await supabase
-      .from('exercises')
-      .select('*')
-      .eq('user_id', userId)
-      .order('name', { ascending: true })
-  )
+export async function listExercises(): Promise<Exercise[]> {
+  return unwrap(await supabase.from('exercises').select('*').order('name', { ascending: true }))
 }
 
 export async function createExercise(
@@ -114,13 +101,9 @@ export async function deleteExercise(id: string) {
 }
 
 // ── workout plans ─────────────────────────────────────────
-export async function listWorkoutPlans(userId: string): Promise<WorkoutPlan[]> {
+export async function listWorkoutPlans(): Promise<WorkoutPlan[]> {
   return unwrap(
-    await supabase
-      .from('workout_plans')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
+    await supabase.from('workout_plans').select('*').order('created_at', { ascending: false })
   )
 }
 
@@ -161,18 +144,13 @@ export async function deletePlanExercise(id: string) {
 }
 
 // ── workout logs ──────────────────────────────────────────
-export async function listWorkoutLogs(userId: string): Promise<WorkoutLog[]> {
+export async function listWorkoutLogs(): Promise<WorkoutLog[]> {
   return unwrap(
-    await supabase
-      .from('workout_logs')
-      .select('*')
-      .eq('user_id', userId)
-      .order('logged_date', { ascending: false })
+    await supabase.from('workout_logs').select('*').order('logged_date', { ascending: false })
   )
 }
 
 export async function listWorkoutLogsInRange(
-  userId: string,
   startDate: string,
   endDate: string
 ): Promise<WorkoutLog[]> {
@@ -180,7 +158,6 @@ export async function listWorkoutLogsInRange(
     await supabase
       .from('workout_logs')
       .select('*')
-      .eq('user_id', userId)
       .gte('logged_date', startDate)
       .lte('logged_date', endDate)
   )
@@ -196,7 +173,7 @@ export async function createWorkoutLog(
   return unwrap(await supabase.from('workout_logs').insert(log).select('*').single())
 }
 
-export async function updateWorkoutLog(id: string, patch: Partial<Omit<WorkoutLog, 'id' | 'user_id'>>) {
+export async function updateWorkoutLog(id: string, patch: Partial<Omit<WorkoutLog, 'id'>>) {
   return unwrap(
     await supabase.from('workout_logs').update(patch).eq('id', id).select('*').single()
   )
@@ -240,7 +217,6 @@ export async function deleteWorkoutLogSet(id: string) {
 
 // ── body metrics ──────────────────────────────────────────
 export async function listBodyMetricsInRange(
-  userId: string,
   startDate: string,
   endDate: string
 ): Promise<BodyMetric[]> {
@@ -248,7 +224,6 @@ export async function listBodyMetricsInRange(
     await supabase
       .from('body_metrics')
       .select('*')
-      .eq('user_id', userId)
       .gte('logged_date', startDate)
       .lte('logged_date', endDate)
       .order('logged_date', { ascending: true })
@@ -261,7 +236,7 @@ export async function upsertBodyMetric(
   return unwrap(
     await supabase
       .from('body_metrics')
-      .upsert(metric, { onConflict: 'user_id,logged_date' })
+      .upsert(metric, { onConflict: 'logged_date' })
       .select('*')
       .single()
   )

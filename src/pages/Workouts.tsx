@@ -1,22 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
 import { createWorkoutLog, deleteWorkoutLog, listWorkoutLogs } from '../lib/api'
 import { formatDateLabel, todayStr } from '../lib/date'
 import type { WorkoutLog } from '../types/database'
 
 export function Workouts() {
-  const { user } = useAuth()
   const navigate = useNavigate()
   const [logs, setLogs] = useState<WorkoutLog[]>([])
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
 
   const load = async () => {
-    if (!user) return
     setLoading(true)
     try {
-      setLogs(await listWorkoutLogs(user.id))
+      setLogs(await listWorkoutLogs())
     } finally {
       setLoading(false)
     }
@@ -24,15 +21,12 @@ export function Workouts() {
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [])
 
   const startFreeform = async () => {
-    if (!user) return
     setStarting(true)
     try {
       const log = await createWorkoutLog({
-        user_id: user.id,
         plan_id: null,
         logged_date: todayStr(),
         duration_min: null,
@@ -43,8 +37,6 @@ export function Workouts() {
       setStarting(false)
     }
   }
-
-  if (!user) return null
 
   return (
     <div className="space-y-4">

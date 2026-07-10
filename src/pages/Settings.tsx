@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { useAuth } from '../hooks/useAuth'
+import { useProfile } from '../hooks/useProfile'
 import { updateProfile } from '../lib/api'
 import type { UnitSystem } from '../types/database'
 
 export function Settings() {
-  const { profile, user, refreshProfile } = useAuth()
+  const { profile, refreshProfile } = useProfile()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState(() => ({
     display_name: profile?.display_name ?? '',
@@ -15,12 +15,12 @@ export function Settings() {
     daily_fat_target_g: profile?.daily_fat_target_g ?? 0,
   }))
 
-  if (!profile || !user) return null
+  if (!profile) return null
 
   const save = async () => {
     setSaving(true)
     try {
-      await updateProfile(user.id, form)
+      await updateProfile(form)
       await refreshProfile()
     } finally {
       setSaving(false)

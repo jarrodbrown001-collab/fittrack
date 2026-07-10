@@ -1,8 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { AuthProvider } from './hooks/useAuth'
-import { RequireAuth } from './components/RequireAuth'
+import { ProfileProvider } from './hooks/useProfile'
 import { Layout } from './components/Layout'
-import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Nutrition } from './pages/Nutrition'
 import { Plans } from './pages/Plans'
@@ -14,16 +12,9 @@ import { Settings } from './pages/Settings'
 export default function App() {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
-      <AuthProvider>
+      <ProfileProvider>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            element={
-              <RequireAuth>
-                <Layout />
-              </RequireAuth>
-            }
-          >
+          <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/nutrition" element={<Nutrition />} />
             <Route path="/plans" element={<Plans />} />
@@ -33,7 +24,7 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>
-      </AuthProvider>
+      </ProfileProvider>
     </BrowserRouter>
   )
 }

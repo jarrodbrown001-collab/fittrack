@@ -1,6 +1,4 @@
-// Hand-written to match supabase/migrations/0001_init.sql.
-// If the schema changes, regenerate with:
-//   npx supabase gen types typescript --project-id <ref> > src/types/database.ts
+// Plain data shapes for FitTrack's local storage backend (see src/lib/storage.ts).
 
 export type UnitSystem = 'imperial' | 'metric'
 export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack'
@@ -97,59 +95,4 @@ export type BodyMetric = {
   body_fat_pct: number | null
   measurements: Record<string, number> | null
   created_at: string
-}
-
-type TableDef<Row, Insert, Update> = {
-  Row: Row
-  Insert: Insert
-  Update: Update
-  Relationships: []
-}
-
-export type Database = {
-  public: {
-    Tables: {
-      profiles: TableDef<Profile, Profile, Partial<Omit<Profile, 'id'>>>
-      foods: TableDef<Food, Omit<Food, 'id' | 'created_at'>, Partial<Omit<Food, 'id'>>>
-      food_logs: TableDef<
-        FoodLog,
-        Omit<FoodLog, 'id' | 'created_at'>,
-        Partial<Omit<FoodLog, 'id'>>
-      >
-      exercises: TableDef<
-        Exercise,
-        Omit<Exercise, 'id' | 'created_at'>,
-        Partial<Omit<Exercise, 'id'>>
-      >
-      workout_plans: TableDef<
-        WorkoutPlan,
-        Omit<WorkoutPlan, 'id' | 'created_at'>,
-        Partial<Omit<WorkoutPlan, 'id'>>
-      >
-      plan_exercises: TableDef<
-        PlanExercise,
-        Omit<PlanExercise, 'id'>,
-        Partial<Omit<PlanExercise, 'id'>>
-      >
-      workout_logs: TableDef<
-        WorkoutLog,
-        Omit<WorkoutLog, 'id' | 'created_at'>,
-        Partial<Omit<WorkoutLog, 'id'>>
-      >
-      workout_log_sets: TableDef<
-        WorkoutLogSet,
-        Omit<WorkoutLogSet, 'id'>,
-        Partial<Omit<WorkoutLogSet, 'id'>>
-      >
-      body_metrics: TableDef<
-        BodyMetric,
-        Omit<BodyMetric, 'id' | 'created_at'>,
-        Partial<Omit<BodyMetric, 'id'>>
-      >
-    }
-    Views: Record<string, never>
-    Functions: Record<string, never>
-    Enums: Record<string, never>
-    CompositeTypes: Record<string, never>
-  }
 }

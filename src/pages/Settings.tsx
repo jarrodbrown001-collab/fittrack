@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useProfile } from '../hooks/useProfile'
 import { updateProfile } from '../lib/api'
+import { exportAll, importAll } from '../lib/storage'
 import type { UnitSystem } from '../types/database'
 
 export function Settings() {
   const { profile, refreshProfile } = useProfile()
   const [saving, setSaving] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState(() => ({
     display_name: profile?.display_name ?? '',
     unit_system: (profile?.unit_system ?? 'imperial') as UnitSystem,
@@ -121,6 +123,53 @@ export function Settings() {
       >
         {saving ? 'Saving…' : 'Save changes'}
       </button>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
+          Backup
+        </h2>
+        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+          All data lives only in this browser. Export a backup regularly, or before clearing
+          browser data / switching browsers or devices.
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              const blob = new Blob([JSON.stringify(exportAll(), null, 2)], {
+                type: 'application/json',
+              })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `fittrack-backup-${new Date().toISOString().slice(0, 10)}.json`
+              a.click()
+              URL.revokeObjectURL(url)
+            }}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Export backup
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Import backup
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              const text = await file.text()
+              importAll(JSON.parse(text))
+              window.location.reload()
+            }}
+          />
+        </div>
+      </section>
     </div>
   )
 }

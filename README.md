@@ -1,5 +1,7 @@
 # FitTrack
 
+**Live app:** https://jarrodbrown001-collab.github.io/fittrack/
+
 A standalone web app for nutrition/macro tracking, workout planning (strength +
 cardio), workout logging, and a health/fitness dashboard.
 

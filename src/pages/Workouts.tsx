@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createWorkoutLog, deleteWorkoutLog, listWorkoutLogs } from '../lib/api'
+import { createWorkoutLog, deleteWorkoutLog, listWorkoutLogs, listWorkoutPlans } from '../lib/api'
 import { formatDateLabel, todayStr } from '../lib/date'
 import type { WorkoutLog } from '../types/database'
 
 export function Workouts() {
   const navigate = useNavigate()
   const [logs, setLogs] = useState<WorkoutLog[]>([])
+  const [planNames, setPlanNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
 
   const load = async () => {
     setLoading(true)
     try {
-      setLogs(await listWorkoutLogs())
+      const [ls, plans] = await Promise.all([listWorkoutLogs(), listWorkoutPlans()])
+      setLogs(ls)
+      setPlanNames(Object.fromEntries(plans.map((p) => [p.id, p.name])))
     } finally {
       setLoading(false)
     }
@@ -68,6 +71,9 @@ export function Workouts() {
                 className="text-left text-slate-800 hover:text-indigo-600 dark:text-slate-200"
               >
                 <span className="font-medium">{formatDateLabel(log.logged_date)}</span>
+                <span className="ml-2 text-slate-500 dark:text-slate-400">
+                  {(log.plan_id && planNames[log.plan_id]) || 'Freeform'}
+                </span>
                 {log.duration_min != null && (
                   <span className="ml-2 text-slate-400">{log.duration_min} min</span>
                 )}

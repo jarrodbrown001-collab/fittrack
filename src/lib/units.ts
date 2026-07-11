@@ -45,10 +45,11 @@ export function lengthUnitLabel(system: UnitSystem): string {
 
 export function formatWeight(kg: number | null, system: UnitSystem, digits = 1): string {
   if (kg == null) return '—'
-  return `${kgToDisplay(kg, system).toFixed(digits)} ${weightUnitLabel(system)}`
+  // Number() drops trailing zeros so a converted 135 lb shows as "135", not "135.0"
+  return `${Number(kgToDisplay(kg, system).toFixed(digits))} ${weightUnitLabel(system)}`
 }
 
 export function formatDistance(km: number | null, system: UnitSystem, digits = 2): string {
   if (km == null) return '—'
-  return `${kmToDisplay(km, system).toFixed(digits)} ${distanceUnitLabel(system)}`
+  return `${Number(kmToDisplay(km, system).toFixed(digits))} ${distanceUnitLabel(system)}`
 }

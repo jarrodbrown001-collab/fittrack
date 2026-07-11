@@ -276,7 +276,7 @@ function ExerciseBlock({
                     type="number"
                     placeholder="weight"
                     className="w-24 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800"
-                    value={s.weight != null ? kgToDisplay(s.weight, unitSystem).toFixed(1) : ''}
+                    value={s.weight != null ? Number(kgToDisplay(s.weight, unitSystem).toFixed(1)) : ''}
                     onChange={async (e) => {
                       const weight = e.target.value
                         ? displayToKg(Number(e.target.value), unitSystem)
@@ -293,7 +293,7 @@ function ExerciseBlock({
                     type="number"
                     placeholder="distance"
                     className="w-24 rounded-md border border-slate-300 px-2 py-1 dark:border-slate-700 dark:bg-slate-800"
-                    value={s.distance != null ? kmToDisplay(s.distance, unitSystem).toFixed(2) : ''}
+                    value={s.distance != null ? Number(kmToDisplay(s.distance, unitSystem).toFixed(2)) : ''}
                     onChange={async (e) => {
                       const distance = e.target.value
                         ? displayToKm(Number(e.target.value), unitSystem)

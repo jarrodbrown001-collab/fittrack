@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useProfile } from '../hooks/useProfile'
+import { ExerciseLibraryModal } from '../components/ExerciseLibraryModal'
 import { Modal } from '../components/Modal'
 import {
   addPlanExercise,
@@ -23,6 +24,7 @@ export function PlanDetail() {
   const [planExercises, setPlanExercises] = useState<PlanExerciseWithExercise[]>([])
   const [exercises, setExercises] = useState<Exercise[]>([])
   const [showAdd, setShowAdd] = useState(false)
+  const [showLibrary, setShowLibrary] = useState(false)
   const [starting, setStarting] = useState(false)
 
   const load = async () => {
@@ -142,6 +144,18 @@ export function PlanDetail() {
           unitSystem={system}
           onClose={() => setShowAdd(false)}
           onAdded={load}
+          onOpenLibrary={() => {
+            setShowAdd(false)
+            setShowLibrary(true)
+          }}
+        />
+      )}
+
+      {showLibrary && (
+        <ExerciseLibraryModal
+          exercises={exercises}
+          onClose={() => setShowLibrary(false)}
+          onChange={load}
         />
       )}
     </div>
@@ -155,6 +169,7 @@ function AddPlanExerciseModal({
   unitSystem,
   onClose,
   onAdded,
+  onOpenLibrary,
 }: {
   planId: string
   exercises: Exercise[]
@@ -162,6 +177,7 @@ function AddPlanExerciseModal({
   unitSystem: 'imperial' | 'metric'
   onClose: () => void
   onAdded: () => void
+  onOpenLibrary: () => void
 }) {
   const [exerciseId, setExerciseId] = useState(exercises[0]?.id ?? '')
   const selected = exercises.find((e) => e.id === exerciseId)
@@ -192,9 +208,17 @@ function AddPlanExerciseModal({
   return (
     <Modal title="Add exercise to plan" onClose={onClose}>
       {exercises.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          Add exercises to your library first (Exercise library button).
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-500">
+            Your exercise library is empty — add an exercise to it first.
+          </p>
+          <button
+            onClick={onOpenLibrary}
+            className="w-full rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+          >
+            Open exercise library
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
           <select

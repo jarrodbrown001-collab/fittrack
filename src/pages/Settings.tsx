@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useProfile } from '../hooks/useProfile'
 import { updateProfile } from '../lib/api'
+import { todayStr } from '../lib/date'
 import { exportAll, importAll } from '../lib/storage'
 import type { UnitSystem } from '../types/database'
 
@@ -141,7 +142,7 @@ export function Settings() {
               const url = URL.createObjectURL(blob)
               const a = document.createElement('a')
               a.href = url
-              a.download = `fittrack-backup-${new Date().toISOString().slice(0, 10)}.json`
+              a.download = `fittrack-backup-${todayStr()}.json`
               a.click()
               URL.revokeObjectURL(url)
             }}

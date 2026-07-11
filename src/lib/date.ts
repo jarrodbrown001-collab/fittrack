@@ -3,7 +3,12 @@ export function todayStr(): string {
 }
 
 export function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  // Local calendar date — toISOString() would shift to the UTC date,
+  // putting evening logs on tomorrow for anyone west of UTC.
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 export function addDays(dateStr: string, delta: number): string {

@@ -20,7 +20,7 @@ import {
   upsertBodyMetric,
   type FoodLogWithFood,
 } from '../lib/api'
-import { addDays, daysAgoStr, formatDateLabel, todayStr } from '../lib/date'
+import { addDays, daysAgoStr, formatDateLabel, toDateStr, todayStr } from '../lib/date'
 import { categoricalColors, chartChrome, usePrefersDark } from '../lib/chartColors'
 import { displayToKg, kgToDisplay, weightUnitLabel } from '../lib/units'
 import type { BodyMetric, WorkoutLog } from '../types/database'
@@ -34,7 +34,7 @@ function mondayOf(dateStr: string): string {
   const day = d.getDay() // 0 = Sun
   const diff = day === 0 ? -6 : 1 - day
   d.setDate(d.getDate() + diff)
-  return d.toISOString().slice(0, 10)
+  return toDateStr(d)
 }
 
 export function Dashboard() {
@@ -54,7 +54,7 @@ export function Dashboard() {
     try {
       const [fl, wl, bm] = await Promise.all([
         listFoodLogsInRange(daysAgoStr(NUTRITION_DAYS - 1), todayStr()),
-        listWorkoutLogsInRange(daysAgoStr(WORKOUT_WEEKS * 7 - 1), todayStr()),
+        listWorkoutLogsInRange(addDays(mondayOf(todayStr()), -7 * (WORKOUT_WEEKS - 1)), todayStr()),
         listBodyMetricsInRange(daysAgoStr(BODY_DAYS - 1), todayStr()),
       ])
       setFoodLogs(fl)
@@ -94,7 +94,9 @@ export function Dashboard() {
       byWeek[wk] = (byWeek[wk] ?? 0) + 1
     }
     const weeks: { week: string; label: string; sessions: number }[] = []
-    let cursor = mondayOf(daysAgoStr(WORKOUT_WEEKS * 7 - 1))
+    // Anchor on the current week's Monday and walk back, so the last bucket
+    // is always the week in progress.
+    let cursor = addDays(mondayOf(todayStr()), -7 * (WORKOUT_WEEKS - 1))
     for (let i = 0; i < WORKOUT_WEEKS; i++) {
       weeks.push({ week: cursor, label: formatDateLabel(cursor), sessions: byWeek[cursor] ?? 0 })
       cursor = addDays(cursor, 7)

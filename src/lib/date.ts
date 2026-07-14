@@ -25,3 +25,17 @@ export function formatDateLabel(dateStr: string): string {
 export function daysAgoStr(n: number): string {
   return addDays(todayStr(), -n)
 }
+
+export function timeNowHM(): string {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+// Combine a local day key + HH:MM into an absolute ISO timestamp.
+export function isoAt(dateStr: string, hm: string): string {
+  return new Date(`${dateStr}T${hm}:00`).toISOString()
+}
+
+export function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}

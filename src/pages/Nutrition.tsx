@@ -7,23 +7,43 @@ import {
   createFoodLog,
   deleteFood,
   deleteFoodLog,
-  listFoodLogsInRange,
+  listFoodLogsForDate,
   listFoods,
+  logEntryMacros,
+  logEntryName,
+  logTimestamp,
   type FoodLogWithFood,
 } from '../lib/api'
-import { addDays, formatDateLabel, todayStr } from '../lib/date'
+import { addDays, formatDateLabel, formatTime, isoAt, timeNowHM, todayStr } from '../lib/date'
 import type { Food, Meal } from '../types/database'
 
-const MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snack']
+const MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snack', 'drink']
+
+const MEAL_BADGE: Record<Meal, string> = {
+  breakfast: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  lunch: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  dinner: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+  snack: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  drink: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+}
+
+function defaultMealForNow(): Meal {
+  const h = new Date().getHours()
+  if (h < 10) return 'breakfast'
+  if (h < 14) return 'lunch'
+  if (h < 17) return 'snack'
+  if (h < 21) return 'dinner'
+  return 'snack'
+}
 
 function totalsFor(logs: FoodLogWithFood[]) {
   return logs.reduce(
     (acc, log) => {
-      const q = log.quantity
-      acc.calories += log.food.calories * q
-      acc.protein_g += log.food.protein_g * q
-      acc.carbs_g += log.food.carbs_g * q
-      acc.fat_g += log.food.fat_g * q
+      const m = logEntryMacros(log)
+      acc.calories += m.calories
+      acc.protein_g += m.protein_g
+      acc.carbs_g += m.carbs_g
+      acc.fat_g += m.fat_g
       return acc
     },
     { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
@@ -36,16 +56,13 @@ export function Nutrition() {
   const [foods, setFoods] = useState<Food[]>([])
   const [logs, setLogs] = useState<FoodLogWithFood[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAddFood, setShowAddFood] = useState(false)
-  const [showLogFood, setShowLogFood] = useState<Meal | null>(null)
+  const [showManageFoods, setShowManageFoods] = useState(false)
+  const [showLogFromLibrary, setShowLogFromLibrary] = useState(false)
 
   const load = async () => {
     setLoading(true)
     try {
-      const [foodList, logList] = await Promise.all([
-        listFoods(),
-        listFoodLogsInRange(date, date),
-      ])
+      const [foodList, logList] = await Promise.all([listFoods(), listFoodLogsForDate(date)])
       setFoods(foodList)
       setLogs(logList)
     } finally {
@@ -60,15 +77,16 @@ export function Nutrition() {
 
   const totals = useMemo(() => totalsFor(logs), [logs])
 
-  const logsByMeal = useMemo(() => {
-    const map: Record<Meal, FoodLogWithFood[]> = {
-      breakfast: [],
-      lunch: [],
-      dinner: [],
-      snack: [],
-    }
-    for (const log of logs) map[log.meal].push(log)
-    return map
+  // Timeline rows with a running calorie/protein sum after each entry.
+  const timeline = useMemo(() => {
+    let calories = 0
+    let protein = 0
+    return logs.map((log) => {
+      const m = logEntryMacros(log)
+      calories += m.calories
+      protein += m.protein_g
+      return { log, macros: m, runningCalories: calories, runningProtein: protein }
+    })
   }, [logs])
 
   if (!profile) return null
@@ -77,12 +95,20 @@ export function Nutrition() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Nutrition</h1>
-        <button
-          onClick={() => setShowAddFood(true)}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          + Manage foods
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowLogFromLibrary(true)}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            + From library
+          </button>
+          <button
+            onClick={() => setShowManageFoods(true)}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Manage foods
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center justify-center gap-3">
@@ -129,77 +155,205 @@ export function Nutrition() {
         />
       </section>
 
-      {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
-      ) : (
-        <div className="space-y-4">
-          {MEALS.map((meal) => (
-            <section
-              key={meal}
-              className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
-            >
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-sm font-semibold capitalize text-slate-700 dark:text-slate-300">
-                  {meal}
-                </h2>
-                <button
-                  onClick={() => setShowLogFood(meal)}
-                  className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+      <QuickAdd date={date} onLogged={load} />
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+          Timeline
+        </h2>
+        {loading ? (
+          <p className="text-sm text-slate-500">Loading…</p>
+        ) : timeline.length === 0 ? (
+          <p className="text-sm text-slate-400">Nothing logged yet — quick add your first entry above.</p>
+        ) : (
+          <>
+            <div className="hidden grid-cols-[3.5rem_1fr_11rem_7rem_1.5rem] gap-2 border-b border-slate-100 pb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 sm:grid dark:border-slate-800">
+              <span>Time</span>
+              <span>Entry</span>
+              <span className="text-right">Cal · P/C/F</span>
+              <span className="text-right">Running</span>
+              <span />
+            </div>
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              {timeline.map(({ log, macros, runningCalories, runningProtein }) => (
+                <li
+                  key={log.id}
+                  className="grid grid-cols-[3.5rem_1fr_1.5rem] items-center gap-2 py-2 text-sm sm:grid-cols-[3.5rem_1fr_11rem_7rem_1.5rem]"
                 >
-                  + Add food
-                </button>
-              </div>
-              {logsByMeal[meal].length === 0 ? (
-                <p className="text-sm text-slate-400">Nothing logged yet.</p>
-              ) : (
-                <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {logsByMeal[meal].map((log) => (
-                    <li key={log.id} className="flex items-center justify-between py-2 text-sm">
-                      <div>
-                        <span className="font-medium text-slate-800 dark:text-slate-200">
-                          {log.food.name}
-                        </span>
-                        <span className="ml-2 text-slate-400">
-                          ×{log.quantity} {log.food.serving_unit}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-slate-500 dark:text-slate-400">
-                          {Math.round(log.food.calories * log.quantity)} cal
-                        </span>
-                        <button
-                          onClick={async () => {
-                            await deleteFoodLog(log.id)
-                            load()
-                          }}
-                          className="text-slate-300 hover:text-red-500"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
-        </div>
+                  <span className="text-xs text-slate-400">{formatTime(logTimestamp(log))}</span>
+                  <div className="min-w-0">
+                    <span className="font-medium text-slate-800 dark:text-slate-200">
+                      {logEntryName(log)}
+                    </span>
+                    {log.quantity !== 1 && (
+                      <span className="ml-1 text-slate-400">×{log.quantity}</span>
+                    )}
+                    <span
+                      className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize ${MEAL_BADGE[log.meal]}`}
+                    >
+                      {log.meal}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-slate-400 sm:hidden">
+                      {Math.round(macros.calories)} cal · {Math.round(macros.protein_g)}/
+                      {Math.round(macros.carbs_g)}/{Math.round(macros.fat_g)}g · running{' '}
+                      {Math.round(runningCalories)} cal
+                    </span>
+                  </div>
+                  <span className="hidden text-right text-slate-500 sm:block dark:text-slate-400">
+                    {Math.round(macros.calories)} cal ·{' '}
+                    <span className="text-xs">
+                      {Math.round(macros.protein_g)}/{Math.round(macros.carbs_g)}/
+                      {Math.round(macros.fat_g)}g
+                    </span>
+                  </span>
+                  <span className="hidden text-right text-xs sm:block">
+                    <span className="font-medium text-slate-700 dark:text-slate-300">
+                      {Math.round(runningCalories)} cal
+                    </span>
+                    <span className="block text-slate-400">{Math.round(runningProtein)}g pro</span>
+                  </span>
+                  <button
+                    onClick={async () => {
+                      await deleteFoodLog(log.id)
+                      load()
+                    }}
+                    className="text-slate-300 hover:text-red-500"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+
+      {showManageFoods && (
+        <ManageFoodsModal foods={foods} onClose={() => setShowManageFoods(false)} onChange={load} />
       )}
 
-      {showAddFood && (
-        <ManageFoodsModal foods={foods} onClose={() => setShowAddFood(false)} onChange={load} />
-      )}
-
-      {showLogFood && (
+      {showLogFromLibrary && (
         <LogFoodModal
-          meal={showLogFood}
           foods={foods}
           date={date}
-          onClose={() => setShowLogFood(null)}
+          onClose={() => setShowLogFromLibrary(false)}
           onLogged={load}
         />
       )}
     </div>
+  )
+}
+
+function QuickAdd({ date, onLogged }: { date: string; onLogged: () => void }) {
+  const empty = { name: '', calories: '', protein_g: '', carbs_g: '', fat_g: '' }
+  const [form, setForm] = useState(empty)
+  const [meal, setMeal] = useState<Meal>(defaultMealForNow())
+  const [time, setTime] = useState(timeNowHM())
+  const [saveToLibrary, setSaveToLibrary] = useState(false)
+
+  const set = (key: keyof typeof empty) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [key]: e.target.value }))
+
+  const add = async () => {
+    if (!form.name.trim()) return
+    const macros = {
+      calories: Number(form.calories) || 0,
+      protein_g: Number(form.protein_g) || 0,
+      carbs_g: Number(form.carbs_g) || 0,
+      fat_g: Number(form.fat_g) || 0,
+    }
+    let food_id: string | null = null
+    if (saveToLibrary) {
+      const food = await createFood({
+        name: form.name.trim(),
+        serving_size: 1,
+        serving_unit: 'serving',
+        ...macros,
+      })
+      food_id = food.id
+    }
+    await createFoodLog({
+      logged_date: date,
+      logged_at: isoAt(date, time),
+      meal,
+      quantity: 1,
+      food_id,
+      ...(food_id ? {} : { name: form.name.trim(), ...macros }),
+    })
+    setForm(empty)
+    setSaveToLibrary(false)
+    setTime(timeNowHM())
+    setMeal(defaultMealForNow())
+    onLogged()
+  }
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">Quick add</h2>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_8rem_6.5rem]">
+        <input
+          placeholder="What did you have?"
+          className="col-span-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm sm:col-span-1 dark:border-slate-700 dark:bg-slate-800"
+          value={form.name}
+          onChange={set('name')}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+        />
+        <select
+          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm capitalize dark:border-slate-700 dark:bg-slate-800"
+          value={meal}
+          onChange={(e) => setMeal(e.target.value as Meal)}
+        >
+          {MEALS.map((m) => (
+            <option key={m} value={m} className="capitalize">
+              {m}
+            </option>
+          ))}
+        </select>
+        <input
+          type="time"
+          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+        />
+      </div>
+      <div className="mt-2 grid grid-cols-4 gap-2">
+        {(
+          [
+            ['calories', 'Cal'],
+            ['protein_g', 'Protein g'],
+            ['carbs_g', 'Carbs g'],
+            ['fat_g', 'Fat g'],
+          ] as const
+        ).map(([key, label]) => (
+          <input
+            key={key}
+            type="number"
+            min="0"
+            placeholder={label}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            value={form[key]}
+            onChange={set(key)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+          />
+        ))}
+      </div>
+      <div className="mt-3 flex items-center justify-between">
+        <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <input
+            type="checkbox"
+            checked={saveToLibrary}
+            onChange={(e) => setSaveToLibrary(e.target.checked)}
+          />
+          Also save to food library
+        </label>
+        <button
+          onClick={add}
+          className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+        >
+          Log it
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -326,13 +480,11 @@ function ManageFoodsModal({
 }
 
 function LogFoodModal({
-  meal,
   foods,
   date,
   onClose,
   onLogged,
 }: {
-  meal: Meal
   foods: Food[]
   date: string
   onClose: () => void
@@ -340,16 +492,24 @@ function LogFoodModal({
 }) {
   const [foodId, setFoodId] = useState(foods[0]?.id ?? '')
   const [quantity, setQuantity] = useState(1)
+  const [meal, setMeal] = useState<Meal>(defaultMealForNow())
+  const [time, setTime] = useState(timeNowHM())
 
   const log = async () => {
     if (!foodId) return
-    await createFoodLog({ food_id: foodId, logged_date: date, meal, quantity })
+    await createFoodLog({
+      food_id: foodId,
+      logged_date: date,
+      logged_at: isoAt(date, time),
+      meal,
+      quantity,
+    })
     onLogged()
     onClose()
   }
 
   return (
-    <Modal title={`Log food — ${meal}`} onClose={onClose}>
+    <Modal title="Log from library" onClose={onClose}>
       {foods.length === 0 ? (
         <p className="text-sm text-slate-500">Add a food first via "Manage foods".</p>
       ) : (
@@ -365,18 +525,41 @@ function LogFoodModal({
               </option>
             ))}
           </select>
-          <label className="block text-sm">
-            <span className="mb-1 block text-slate-500 dark:text-slate-400">
-              Quantity (× serving)
-            </span>
-            <input
-              type="number"
-              step="0.25"
-              className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
-              value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))}
-            />
-          </label>
+          <div className="grid grid-cols-3 gap-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-500 dark:text-slate-400">Qty (× serving)</span>
+              <input
+                type="number"
+                step="0.25"
+                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+                value={quantity}
+                onChange={(e) => setQuantity(Number(e.target.value))}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-500 dark:text-slate-400">Meal</span>
+              <select
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm capitalize dark:border-slate-700 dark:bg-slate-800"
+                value={meal}
+                onChange={(e) => setMeal(e.target.value as Meal)}
+              >
+                {MEALS.map((m) => (
+                  <option key={m} value={m} className="capitalize">
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-500 dark:text-slate-400">Time</span>
+              <input
+                type="time"
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+              />
+            </label>
+          </div>
           <button
             onClick={log}
             className="w-full rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"

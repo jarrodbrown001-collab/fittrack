@@ -70,17 +70,50 @@ export async function deleteFood(id: string): Promise<void> {
 }
 
 // ── food logs ─────────────────────────────────────────────
-export type FoodLogWithFood = FoodLog & { food: Food }
+export type FoodLogWithFood = FoodLog & { food: Food | null }
 
 function joinFood(logs: FoodLog[]): FoodLogWithFood[] {
   const foods = readTable<Food>('foods')
-  return logs.map((l) => ({ ...l, food: foods.find((f) => f.id === l.food_id)! }))
+  return logs.map((l) => ({ ...l, food: foods.find((f) => f.id === l.food_id) ?? null }))
+}
+
+// Consumption time for ordering/display: logged_at when present,
+// otherwise fall back to when the row was created (legacy rows).
+export function logTimestamp(log: FoodLog): string {
+  return log.logged_at ?? log.created_at
+}
+
+export function logEntryName(log: FoodLogWithFood): string {
+  return log.food?.name ?? log.name ?? 'Entry'
+}
+
+// Effective macros for one log row (quantity applied), regardless of
+// whether it references a library food or carries inline quick-add values.
+export function logEntryMacros(log: FoodLogWithFood): {
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+} {
+  const src = log.food ?? {
+    calories: log.calories ?? 0,
+    protein_g: log.protein_g ?? 0,
+    carbs_g: log.carbs_g ?? 0,
+    fat_g: log.fat_g ?? 0,
+  }
+  const q = log.quantity
+  return {
+    calories: src.calories * q,
+    protein_g: src.protein_g * q,
+    carbs_g: src.carbs_g * q,
+    fat_g: src.fat_g * q,
+  }
 }
 
 export async function listFoodLogsForDate(date: string): Promise<FoodLogWithFood[]> {
   const logs = readTable<FoodLog>('food_logs')
     .filter((l) => l.logged_date === date)
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .sort((a, b) => logTimestamp(a).localeCompare(logTimestamp(b)))
   return joinFood(logs)
 }
 
@@ -95,12 +128,31 @@ export async function listFoodLogsInRange(
 }
 
 export async function createFoodLog(log: {
-  food_id: string
   logged_date: string
   meal: Meal
   quantity: number
+  food_id?: string | null
+  logged_at?: string | null
+  name?: string | null
+  calories?: number | null
+  protein_g?: number | null
+  carbs_g?: number | null
+  fat_g?: number | null
 }): Promise<FoodLog> {
-  const row: FoodLog = { id: newId(), created_at: nowIso(), ...log }
+  const row: FoodLog = {
+    id: newId(),
+    created_at: nowIso(),
+    logged_date: log.logged_date,
+    meal: log.meal,
+    quantity: log.quantity,
+    food_id: log.food_id ?? null,
+    logged_at: log.logged_at ?? null,
+    name: log.name ?? null,
+    calories: log.calories ?? null,
+    protein_g: log.protein_g ?? null,
+    carbs_g: log.carbs_g ?? null,
+    fat_g: log.fat_g ?? null,
+  }
   writeTable('food_logs', [...readTable<FoodLog>('food_logs'), row])
   return row
 }

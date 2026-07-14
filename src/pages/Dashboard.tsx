@@ -17,6 +17,7 @@ import {
   listBodyMetricsInRange,
   listFoodLogsInRange,
   listWorkoutLogsInRange,
+  logEntryMacros,
   upsertBodyMetric,
   type FoodLogWithFood,
 } from '../lib/api'
@@ -73,10 +74,11 @@ export function Dashboard() {
     const byDate: Record<string, { calories: number; protein_g: number; carbs_g: number; fat_g: number }> = {}
     for (const log of foodLogs) {
       const bucket = (byDate[log.logged_date] ??= { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 })
-      bucket.calories += log.food.calories * log.quantity
-      bucket.protein_g += log.food.protein_g * log.quantity
-      bucket.carbs_g += log.food.carbs_g * log.quantity
-      bucket.fat_g += log.food.fat_g * log.quantity
+      const m = logEntryMacros(log)
+      bucket.calories += m.calories
+      bucket.protein_g += m.protein_g
+      bucket.carbs_g += m.carbs_g
+      bucket.fat_g += m.fat_g
     }
     const days: { date: string; label: string; calories: number; protein_g: number; carbs_g: number; fat_g: number }[] = []
     for (let i = NUTRITION_DAYS - 1; i >= 0; i--) {

@@ -1,7 +1,7 @@
 // Plain data shapes for FitTrack's local storage backend (see src/lib/storage.ts).
 
 export type UnitSystem = 'imperial' | 'metric'
-export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack'
+export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'drink'
 export type ExerciseCategory = 'strength' | 'cardio'
 export type PlanType = 'strength' | 'cardio' | 'mixed'
 
@@ -30,10 +30,20 @@ export type Food = {
 
 export type FoodLog = {
   id: string
-  food_id: string
+  // Library entry: food_id set, inline fields null.
+  // Quick ad-hoc entry: food_id null, name + macros stored inline.
+  // (Rows created before quick-add existed lack the new keys entirely —
+  // readers must treat undefined like null.)
+  food_id: string | null
   logged_date: string
+  logged_at: string | null // ISO timestamp of consumption; null on legacy rows
   meal: Meal
   quantity: number
+  name: string | null
+  calories: number | null
+  protein_g: number | null
+  carbs_g: number | null
+  fat_g: number | null
   created_at: string
 }
 

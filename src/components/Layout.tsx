@@ -4,6 +4,7 @@ import { useProfile } from '../hooks/useProfile'
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/nutrition', label: 'Nutrition' },
+  { to: '/training-plan', label: 'Training Plan' },
   { to: '/plans', label: 'Plans' },
   { to: '/workouts', label: 'Workouts' },
   { to: '/settings', label: 'Settings' },

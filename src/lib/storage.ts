@@ -39,6 +39,7 @@ const TABLES = [
   'workout_logs',
   'workout_log_sets',
   'body_metrics',
+  'training_plan', // 12-week plan logging (singleton, see pages/TrainingPlan.tsx)
 ] as const
 
 export function exportAll(): Record<string, unknown> {

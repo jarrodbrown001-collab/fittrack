@@ -3,6 +3,7 @@ import { ProfileProvider } from './hooks/useProfile'
 import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { Nutrition } from './pages/Nutrition'
+import { TrainingPlan } from './pages/TrainingPlan'
 import { Plans } from './pages/Plans'
 import { PlanDetail } from './pages/PlanDetail'
 import { Workouts } from './pages/Workouts'
@@ -17,6 +18,7 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/nutrition" element={<Nutrition />} />
+            <Route path="/training-plan" element={<TrainingPlan />} />
             <Route path="/plans" element={<Plans />} />
             <Route path="/plans/:planId" element={<PlanDetail />} />
             <Route path="/workouts" element={<Workouts />} />

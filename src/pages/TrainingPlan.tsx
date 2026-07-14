@@ -7,7 +7,7 @@
 // data is included in Settings → Export/Import backups.
 import { useState, useEffect, useMemo } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
-import { readSingleton, writeSingleton } from "../lib/storage";
+import { getTrainingPlanData, saveTrainingPlanData } from "../lib/api";
 
 // ═══════════════════════════════════════════════════
 // PHASE CONFIG
@@ -904,11 +904,13 @@ export function TrainingPlan() {
   };
 
   useEffect(() => {
-    try {
-      const d = readSingleton("training_plan");
-      if (d) applyData(d);
-    } catch {}
-    setLoaded(true);
+    (async () => {
+      try {
+        const d = await getTrainingPlanData();
+        if (d) applyData(d);
+      } catch {}
+      setLoaded(true);
+    })();
   }, []);
 
   const save = async (sets, wts, crd, acts, nts, rns, cex) => {
@@ -916,7 +918,7 @@ export function TrainingPlan() {
     const data = {sets, weights:wts, cardio:crd, activities:acts, notes:nts, setNotes:rns, customExercises:cex, lastSaved:ts};
     setSaveStatus("saving");
     try {
-      writeSingleton("training_plan", data);
+      await saveTrainingPlanData(data);
       setLastSaved(ts);
       setSaveStatus("saved");
     } catch {

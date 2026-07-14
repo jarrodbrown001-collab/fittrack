@@ -2,12 +2,16 @@ import { useRef, useState } from 'react'
 import { useProfile } from '../hooks/useProfile'
 import { updateProfile } from '../lib/api'
 import { todayStr } from '../lib/date'
+import { migrateLocalToCloud } from '../lib/migrate'
 import { exportAll, importAll } from '../lib/storage'
+import { cloudEnabled, supabase } from '../lib/supabase'
 import type { UnitSystem } from '../types/database'
 
 export function Settings() {
   const { profile, refreshProfile } = useProfile()
   const [saving, setSaving] = useState(false)
+  const [migrating, setMigrating] = useState(false)
+  const [migrateResult, setMigrateResult] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState(() => ({
     display_name: profile?.display_name ?? '',
@@ -125,6 +129,49 @@ export function Settings() {
         {saving ? 'Saving…' : 'Save changes'}
       </button>
 
+      {cloudEnabled && (
+        <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
+            Account &amp; sync
+          </h2>
+          <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+            Cloud sync is on — everything you log saves to your account and shows up on every
+            device you sign in from.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={async () => {
+                setMigrating(true)
+                setMigrateResult(null)
+                try {
+                  setMigrateResult(await migrateLocalToCloud())
+                } catch (err) {
+                  setMigrateResult(`Upload failed: ${err instanceof Error ? err.message : err}`)
+                } finally {
+                  setMigrating(false)
+                }
+              }}
+              disabled={migrating}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {migrating ? 'Uploading…' : "Upload this device's local data"}
+            </button>
+            <button
+              onClick={async () => {
+                await supabase.auth.signOut()
+              }}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Sign out
+            </button>
+          </div>
+          {migrateResult && (
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{migrateResult}</p>
+          )}
+        </section>
+      )}
+
+      {!cloudEnabled && (
       <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
         <h2 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
           Backup
@@ -171,6 +218,7 @@ export function Settings() {
           />
         </div>
       </section>
+      )}
     </div>
   )
 }

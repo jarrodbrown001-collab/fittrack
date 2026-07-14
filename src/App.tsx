@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ProfileProvider } from './hooks/useProfile'
+import { AuthGate } from './components/AuthGate'
 import { Layout } from './components/Layout'
 import { Dashboard } from './pages/Dashboard'
 import { Nutrition } from './pages/Nutrition'
@@ -13,7 +14,8 @@ import { Settings } from './pages/Settings'
 export default function App() {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
-      <ProfileProvider>
+      <AuthGate>
+        <ProfileProvider>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
@@ -26,7 +28,8 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>
-      </ProfileProvider>
+        </ProfileProvider>
+      </AuthGate>
     </BrowserRouter>
   )
 }

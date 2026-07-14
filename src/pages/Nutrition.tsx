@@ -22,7 +22,7 @@ const MEALS: Meal[] = ['breakfast', 'lunch', 'dinner', 'snack', 'drink']
 const MEAL_BADGE: Record<Meal, string> = {
   breakfast: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   lunch: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  dinner: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+  dinner: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
   snack: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
   drink: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
 }

@@ -1,35 +1,25 @@
-import { useEffect, useState } from 'react'
-
+// FitTrack is permanently dark (themed after the Training Plan tab), so the
+// old prefers-color-scheme hook now always reports dark. It keeps its name and
+// signature so chart call sites didn't have to change.
 export function usePrefersDark(): boolean {
-  const [dark, setDark] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
-  )
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => setDark(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-
-  return dark
+  return true
 }
 
 // Categorical slots (fixed order — never cycle/reassign per-series).
-const CATEGORICAL_LIGHT = ['#2a78d6', '#1baf7a', '#eda100', '#008300', '#4a3aa7', '#e34948', '#e87ba4', '#eb6834']
-const CATEGORICAL_DARK = ['#3987e5', '#199e70', '#c98500', '#008300', '#9085e9', '#e66767', '#d55181', '#d95926']
+// Matches the Training Plan tab's lift colors: blue, orange, green, purple…
+const CATEGORICAL_DARK = ['#3b82f6', '#f97316', '#22c55e', '#a855f7', '#ec4899', '#06b6d4', '#facc15', '#ef4444']
 
-export function categoricalColors(dark: boolean): string[] {
-  return dark ? CATEGORICAL_DARK : CATEGORICAL_LIGHT
+export function categoricalColors(_dark: boolean): string[] {
+  return CATEGORICAL_DARK
 }
 
-export function chartChrome(dark: boolean) {
+export function chartChrome(_dark: boolean) {
   return {
-    surface: dark ? '#1a1a19' : '#fcfcfb',
-    primaryInk: dark ? '#ffffff' : '#0b0b0b',
-    secondaryInk: dark ? '#c3c2b7' : '#52514e',
-    mutedInk: '#898781',
-    gridline: dark ? '#2c2c2a' : '#e1e0d9',
-    baseline: dark ? '#383835' : '#c3c2b7',
+    surface: '#0f1320',
+    primaryInk: '#f0f4ff',
+    secondaryInk: '#c9d1e0',
+    mutedInk: '#6b7280',
+    gridline: '#1c2230',
+    baseline: '#2a3247',
   }
 }

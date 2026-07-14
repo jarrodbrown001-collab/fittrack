@@ -998,15 +998,15 @@ export function TrainingPlan() {
   );
 
   return (
-    <div style={{ background:BG, minHeight:"100vh", color:"#F0F4FF", fontFamily:"'JetBrains Mono',monospace" }}>
+    <div className="jb-plan" style={{ background:BG, minHeight:"100vh", color:"#F0F4FF", fontFamily:"'JetBrains Mono',monospace" }}>
+      {/* Scoped to .jb-plan — fonts and scrollbars come from the app-wide
+          theme (src/index.css). A global reset here would leak out of this
+          page and beat Tailwind's layered utilities everywhere else. */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,600;0,700;0,900&family=JetBrains+Mono:wght@400;500;600&display=swap');
-        *{box-sizing:border-box;margin:0;padding:0}
-        button{cursor:pointer;outline:none;border:none;}
-        input,textarea{color-scheme:dark;}
-        ::-webkit-scrollbar{width:3px;height:3px}
-        ::-webkit-scrollbar-track{background:transparent}
-        ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+        .jb-plan, .jb-plan *{box-sizing:border-box}
+        .jb-plan button{cursor:pointer;outline:none;border:none;margin:0}
+        .jb-plan input,.jb-plan textarea{color-scheme:dark}
+        .jb-plan h1,.jb-plan h2,.jb-plan h3,.jb-plan p{margin:0}
       `}</style>
 
       {/* ── HEADER ── */}

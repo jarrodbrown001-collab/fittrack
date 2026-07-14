@@ -1,10 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,600;0,700;0,900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
+/* FitTrack is permanently dark, themed to match the Training Plan tab
+   (JB's summer plan aesthetic): near-black navy surfaces, JetBrains Mono
+   body text, Barlow Condensed display headings, amber accent.
+   The `dark` class is hardcoded on <html>, so every `dark:` variant wins. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Surfaces — plan palette: page #0A0D14, cards #0F1320 */
+  --color-slate-950: #0a0d14;
+  --color-slate-900: #0f1320;
+  --color-slate-800: #1b2130;
+  --color-slate-700: #2a3247;
+
+  /* Inks — plan text colors */
+  --color-slate-50: #f0f4ff;
+  --color-slate-100: #e2e8f5;
+  --color-slate-200: #c9d1e0;
+  --color-slate-300: #c9d1e0;
+  --color-slate-400: #6b7280;
+  --color-slate-500: #9ca3af;
+
+  /* Accent — remap the app-wide indigo accent to the plan's amber */
+  --color-indigo-100: #fef3c7;
+  --color-indigo-300: #fcd34d;
+  --color-indigo-400: #fbbf24;
+  --color-indigo-500: #f59e0b;
+  --color-indigo-600: #d97706;
+  --color-indigo-700: #b45309;
+  --color-indigo-900: #78350f;
+
+  --font-sans: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Display headings — condensed, uppercase, letterspaced like the plan */
+h1,
+h2,
+h3 {
+  font-family: 'Barlow Condensed', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+h1 {
+  font-weight: 900;
+}
+
+h2,
+h3 {
+  font-weight: 700;
+}
+
+/* Thin scrollbars, same as the plan tab */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
 }

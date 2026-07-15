@@ -610,6 +610,53 @@ export async function upsertBodyMetric(
   return row
 }
 
+// ── cloud backup / restore ────────────────────────────────
+// Parent-before-child order so restore upserts never violate FKs.
+const BACKUP_TABLES = [
+  'profiles',
+  'foods',
+  'food_logs',
+  'exercises',
+  'workout_plans',
+  'plan_exercises',
+  'workout_logs',
+  'workout_log_sets',
+  'body_metrics',
+  'training_plan',
+] as const
+
+function backupConflictTarget(table: string): string {
+  if (table === 'profiles' || table === 'training_plan') return 'user_id'
+  if (table === 'body_metrics') return 'user_id,logged_date'
+  return 'id'
+}
+
+// Read-only: pull every row the signed-in user owns into a plain object.
+// Safe to call anytime — touches nothing.
+export async function exportCloud(): Promise<Record<string, unknown[]>> {
+  const dump: Record<string, unknown[]> = {}
+  for (const t of BACKUP_TABLES) {
+    dump[t] = (must(await supabase.from(t).select('*')) as unknown[]) ?? []
+  }
+  return dump
+}
+
+// Upsert a previously exported snapshot back into the cloud, re-scoped to
+// the current user. Additive/merge by design: it restores rows that were
+// changed or removed, and never deletes anything already present.
+export async function restoreCloud(dump: Record<string, unknown[]>): Promise<string> {
+  const userId = await uid()
+  const done: string[] = []
+  for (const t of BACKUP_TABLES) {
+    const rows = dump[t]
+    if (!Array.isArray(rows) || rows.length === 0) continue
+    const scoped = rows.map((r) => ({ ...(r as Record<string, unknown>), user_id: userId }))
+    must(await supabase.from(t).upsert(scoped, { onConflict: backupConflictTarget(t) }).select())
+    done.push(`${t} (${rows.length})`)
+  }
+  return done.length ? `Restored: ${done.join(', ')}` : 'Backup file was empty — nothing restored.'
+}
+
 // ── training plan (12-week tab, one JSON document) ────────
 export async function getTrainingPlanData(): Promise<Record<string, unknown> | null> {
   if (cloudEnabled) {

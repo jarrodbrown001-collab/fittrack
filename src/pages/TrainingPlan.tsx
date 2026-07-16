@@ -12,14 +12,14 @@ import { getTrainingPlanData, saveTrainingPlanData } from "../lib/api";
 // ═══════════════════════════════════════════════════
 // PHASE CONFIG
 // ═══════════════════════════════════════════════════
-const PH = {
+export const PH = {
   1:{name:"FOUNDATION",icon:"🔵",c:"#3B82F6",r:"59,130,246",goal:"Establish movement patterns, build baseline conditioning, and prepare the body for the heavier loading ahead. Challenging but never grinding — finish every session feeling capable, not wrecked."},
   2:{name:"BUILD",icon:"🟡",c:"#F59E0B",r:"245,158,11",goal:"Increase loading and reduce reps on primary lifts. Add power volume on Fridays. The last 1–2 reps of heavy sets should feel genuinely hard but controlled."},
   3:{name:"INTENSIFY",icon:"🔴",c:"#EF4444",r:"239,68,68",goal:"Peak loading on primary lifts. Reps drop, intensity climbs. The hardest phase of the block — recovery becomes just as important as training."},
   4:{name:"PEAK",icon:"⚡",c:"#A855F7",r:"168,85,247",goal:"Express the strength you've built over 9 weeks. Push primary lifts to near-maximum, then true maximum. Warm-up sets matter more here than at any other point."},
   5:{name:"DELOAD",icon:"🟢",c:"#22C55E",r:"34,197,94",goal:"Full, deliberate recovery. Volume drops ~35–40%, intensity stays moderate. Sessions should feel almost too easy — that's exactly the point."},
 };
-const S="strength",PW="power",Z="zone2",R="rest";
+export const S="strength",PW="power",Z="zone2",R="rest";
 const ex=(n,p,s,note)=>({n,p,s,note});
 
 // Per-week "what you're targeting this week" reminders
@@ -41,7 +41,7 @@ const WEEK_FOCUS = {
 // ═══════════════════════════════════════════════════
 // 12-WEEK WORKOUT DATA
 // ═══════════════════════════════════════════════════
-const WEEKS=[
+export const WEEKS=[
   {w:1,ph:1,range:"June 1–7",days:[
     {dn:"Monday",dt:"June 1",type:S,title:"Strength: Squat & Bench",restNote:"2–3 min / 90 sec rows",exs:[
       ex("Back Squat","4 × 5 @ 73%",4,"Control descent, drive through the floor, stay tall"),
@@ -349,7 +349,7 @@ const LIFT_CONFIG = [
 // ═══════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════
-function getBlockPos() {
+export function getBlockPos() {
   const start = new Date('2026-06-01');
   const now = new Date();
   const diff = Math.floor((now - start) / 86400000);

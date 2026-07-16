@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -14,6 +15,7 @@ import {
 } from 'recharts'
 import { useProfile } from '../hooks/useProfile'
 import {
+  getTrainingPlanData,
   listBodyMetricsInRange,
   listFoodLogsInRange,
   listWorkoutLogsInRange,
@@ -24,6 +26,7 @@ import {
 import { addDays, daysAgoStr, formatDateLabel, toDateStr, todayStr } from '../lib/date'
 import { categoricalColors, chartChrome, usePrefersDark } from '../lib/chartColors'
 import { displayToKg, kgToDisplay, weightUnitLabel } from '../lib/units'
+import { getBlockPos, PH, R, S, PW, WEEKS } from './TrainingPlan'
 import type { BodyMetric, WorkoutLog } from '../types/database'
 
 const NUTRITION_DAYS = 30
@@ -47,20 +50,23 @@ export function Dashboard() {
   const [foodLogs, setFoodLogs] = useState<FoodLogWithFood[]>([])
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([])
   const [bodyMetrics, setBodyMetrics] = useState<BodyMetric[]>([])
+  const [planData, setPlanData] = useState<Record<string, any> | null>(null)
   const [weightInput, setWeightInput] = useState('')
   const [loading, setLoading] = useState(true)
 
   const load = async () => {
     setLoading(true)
     try {
-      const [fl, wl, bm] = await Promise.all([
+      const [fl, wl, bm, pd] = await Promise.all([
         listFoodLogsInRange(daysAgoStr(NUTRITION_DAYS - 1), todayStr()),
         listWorkoutLogsInRange(addDays(mondayOf(todayStr()), -7 * (WORKOUT_WEEKS - 1)), todayStr()),
         listBodyMetricsInRange(daysAgoStr(BODY_DAYS - 1), todayStr()),
+        getTrainingPlanData(),
       ])
       setFoodLogs(fl)
       setWorkoutLogs(wl)
       setBodyMetrics(bm)
+      setPlanData(pd)
     } finally {
       setLoading(false)
     }
@@ -117,6 +123,25 @@ export function Dashboard() {
       }))
   }, [bodyMetrics, profile])
 
+  const todayPlan = useMemo(() => {
+    const pos = getBlockPos()
+    if (!pos.active) return null
+    const week = WEEKS[pos.wIdx]
+    const day = week.days[pos.dIdx]
+    const ph = (PH as any)[week.ph]
+    const key = `${pos.wIdx}-${pos.dIdx}`
+    const completed = Boolean(planData?.cardio?.[key])
+    let setsDone = 0
+    let setsTotal = 0
+    if (day.type === S || day.type === PW) {
+      day.exs.forEach((e: any, ei: number) => {
+        setsTotal += e.s
+        setsDone += Math.min(planData?.sets?.[`${pos.wIdx}-${pos.dIdx}-${ei}`] ?? 0, e.s)
+      })
+    }
+    return { week, day, ph, completed, setsDone, setsTotal }
+  }, [planData])
+
   if (!profile) return null
 
   const logWeight = async () => {
@@ -136,6 +161,63 @@ export function Dashboard() {
       <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Dashboard</h1>
 
       {loading && <p className="text-sm text-slate-500">Loading…</p>}
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">
+          Today's training
+        </h2>
+        {!todayPlan ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            No active training block right now.
+          </p>
+        ) : (
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs">
+                <span
+                  className="rounded-full px-2 py-0.5 font-medium"
+                  style={{
+                    color: todayPlan.ph.c,
+                    background: `rgba(${todayPlan.ph.r},0.12)`,
+                  }}
+                >
+                  {todayPlan.ph.icon} Wk {todayPlan.week.w} · {todayPlan.ph.name}
+                </span>
+              </div>
+              <div className="mt-1.5 truncate text-lg font-bold text-slate-50">
+                {{ strength: '🏋️', power: '⚡', zone2: '🏃', rest: '✝️' }[todayPlan.day.type]}{' '}
+                {todayPlan.day.title}
+              </div>
+              {todayPlan.day.type !== R && todayPlan.setsTotal > 0 && !todayPlan.completed && (
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  {todayPlan.setsDone}/{todayPlan.setsTotal} sets logged
+                </p>
+              )}
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              {todayPlan.day.type === R ? (
+                <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-medium text-slate-400">
+                  Rest day
+                </span>
+              ) : todayPlan.completed ? (
+                <span className="rounded-full bg-green-900/40 px-3 py-1 text-xs font-medium text-green-400">
+                  ✓ Complete
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-900/30 px-3 py-1 text-xs font-medium text-amber-400">
+                  Not yet completed
+                </span>
+              )}
+              <Link
+                to="/training-plan"
+                className="text-xs font-medium text-indigo-500 hover:text-indigo-400"
+              >
+                Open training plan →
+              </Link>
+            </div>
+          </div>
+        )}
+      </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
         <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">

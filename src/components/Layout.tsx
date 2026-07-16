@@ -2,12 +2,12 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useProfile } from '../hooks/useProfile'
 
 const navItems = [
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/nutrition', label: 'Nutrition' },
-  { to: '/training-plan', label: 'Training Plan' },
-  { to: '/plans', label: 'Plans' },
-  { to: '/workouts', label: 'Workouts' },
-  { to: '/settings', label: 'Settings' },
+  { to: '/', label: 'Dashboard', shortLabel: 'Dash', end: true },
+  { to: '/nutrition', label: 'Nutrition', shortLabel: 'Food' },
+  { to: '/training-plan', label: 'Training Plan', shortLabel: 'Plan' },
+  { to: '/plans', label: 'Plans', shortLabel: 'Plans' },
+  { to: '/workouts', label: 'Workouts', shortLabel: 'Workouts' },
+  { to: '/settings', label: 'Settings', shortLabel: 'Settings' },
 ]
 
 export function Layout() {
@@ -41,7 +41,7 @@ export function Layout() {
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
-                  `whitespace-nowrap border-b-2 px-3 py-2 text-xs font-bold uppercase tracking-widest transition ${
+                  `whitespace-nowrap border-b-2 px-2 py-2 text-xs font-bold uppercase tracking-wide transition sm:px-3 sm:tracking-widest ${
                     isActive
                       ? 'border-indigo-500 text-indigo-500'
                       : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -49,7 +49,8 @@ export function Layout() {
                 }
                 style={{ fontFamily: "'Barlow Condensed', sans-serif" }}
               >
-                {item.label}
+                <span className="sm:hidden">{item.shortLabel}</span>
+                <span className="hidden sm:inline">{item.label}</span>
               </NavLink>
             ))}
           </nav>

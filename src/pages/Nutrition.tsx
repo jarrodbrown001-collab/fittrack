@@ -516,7 +516,7 @@ function QuickAdd({ date, onLogged }: { date: string; onLogged: () => void }) {
           Also save to food library
         </label>
         {saveToLibrary && (
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-xs text-slate-400">as</span>
             <input
               type="number"
@@ -532,7 +532,7 @@ function QuickAdd({ date, onLogged }: { date: string; onLogged: () => void }) {
               value={servingUnit}
               onChange={(e) => setServingUnit(e.target.value)}
             />
-            <span className="text-xs text-slate-400">
+            <span className="w-full text-xs text-slate-400 sm:w-auto">
               — the macros above are for one serving of this size
             </span>
           </div>

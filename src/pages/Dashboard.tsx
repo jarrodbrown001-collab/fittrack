@@ -18,7 +18,6 @@ import {
   getTrainingPlanData,
   listBodyMetricsInRange,
   listFoodLogsInRange,
-  listWorkoutLogsInRange,
   logEntryMacros,
   upsertBodyMetric,
   type FoodLogWithFood,
@@ -27,18 +26,30 @@ import { addDays, daysAgoStr, formatDateLabel, toDateStr, todayStr } from '../li
 import { categoricalColors, chartChrome, usePrefersDark } from '../lib/chartColors'
 import { displayToKg, kgToDisplay, weightUnitLabel } from '../lib/units'
 import { getBlockPos, PH, R, S, PW, WEEKS } from './TrainingPlan'
-import type { BodyMetric, WorkoutLog } from '../types/database'
+import { ProgressBar } from '../components/ProgressBar'
+import type { BodyMetric } from '../types/database'
 
 const NUTRITION_DAYS = 30
 const WORKOUT_WEEKS = 8
 const BODY_DAYS = 90
+const DAY_ICON: Record<string, string> = { strength: '🏋️', power: '⚡', zone2: '🏃', rest: '✝️' }
+
+function toDate(dateStr: string): Date {
+  return new Date(dateStr + 'T00:00:00')
+}
 
 function mondayOf(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
+  const d = toDate(dateStr)
   const day = d.getDay() // 0 = Sun
   const diff = day === 0 ? -6 : 1 - day
   d.setDate(d.getDate() + diff)
   return toDateStr(d)
+}
+
+// The plan's calendar starts Monday June 1, 2026 — the same anchor
+// getBlockPos() uses — so a week index maps directly to a real Monday date.
+function mondayForWeekIndex(wIdx: number): string {
+  return addDays('2026-06-01', wIdx * 7)
 }
 
 export function Dashboard() {
@@ -48,7 +59,6 @@ export function Dashboard() {
   const chrome = chartChrome(dark)
 
   const [foodLogs, setFoodLogs] = useState<FoodLogWithFood[]>([])
-  const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([])
   const [bodyMetrics, setBodyMetrics] = useState<BodyMetric[]>([])
   const [planData, setPlanData] = useState<Record<string, any> | null>(null)
   const [weightInput, setWeightInput] = useState('')
@@ -57,14 +67,12 @@ export function Dashboard() {
   const load = async () => {
     setLoading(true)
     try {
-      const [fl, wl, bm, pd] = await Promise.all([
+      const [fl, bm, pd] = await Promise.all([
         listFoodLogsInRange(daysAgoStr(NUTRITION_DAYS - 1), todayStr()),
-        listWorkoutLogsInRange(addDays(mondayOf(todayStr()), -7 * (WORKOUT_WEEKS - 1)), todayStr()),
         listBodyMetricsInRange(daysAgoStr(BODY_DAYS - 1), todayStr()),
         getTrainingPlanData(),
       ])
       setFoodLogs(fl)
-      setWorkoutLogs(wl)
       setBodyMetrics(bm)
       setPlanData(pd)
     } finally {
@@ -95,22 +103,47 @@ export function Dashboard() {
     return days
   }, [foodLogs])
 
+  // "Consistency" = Training Plan sessions actually marked complete each
+  // week, out of the 6 non-rest days the program schedules (Sundays are
+  // rest, so they're excluded from the denominator).
   const workoutSeries = useMemo(() => {
-    const byWeek: Record<string, number> = {}
-    for (const log of workoutLogs) {
-      const wk = mondayOf(log.logged_date)
-      byWeek[wk] = (byWeek[wk] ?? 0) + 1
-    }
-    const weeks: { week: string; label: string; sessions: number }[] = []
-    // Anchor on the current week's Monday and walk back, so the last bucket
-    // is always the week in progress.
+    // Map each real-calendar Monday in the rolling window back to its
+    // program week index (undefined outside the 12-week block).
+    const mondayToWeekIdx = new Map<string, number>()
+    WEEKS.forEach((_, wIdx) => mondayToWeekIdx.set(mondayForWeekIndex(wIdx), wIdx))
+
+    const weeks: { week: string; label: string; sessions: number; possible: number }[] = []
     let cursor = addDays(mondayOf(todayStr()), -7 * (WORKOUT_WEEKS - 1))
     for (let i = 0; i < WORKOUT_WEEKS; i++) {
-      weeks.push({ week: cursor, label: formatDateLabel(cursor), sessions: byWeek[cursor] ?? 0 })
+      const wIdx = mondayToWeekIdx.get(cursor)
+      let sessions = 0
+      let possible = 0
+      if (wIdx !== undefined) {
+        const week = WEEKS[wIdx]
+        week.days.forEach((d: any, dIdx: number) => {
+          if (d.type === R) return
+          possible += 1
+          if (planData?.cardio?.[`${wIdx}-${dIdx}`]) sessions += 1
+        })
+      }
+      weeks.push({ week: cursor, label: formatDateLabel(cursor), sessions, possible })
       cursor = addDays(cursor, 7)
     }
     return weeks
-  }, [workoutLogs])
+  }, [planData])
+
+  const todayTotals = useMemo(() => {
+    const totals = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    for (const log of foodLogs) {
+      if (log.logged_date !== todayStr()) continue
+      const m = logEntryMacros(log)
+      totals.calories += m.calories
+      totals.protein_g += m.protein_g
+      totals.carbs_g += m.carbs_g
+      totals.fat_g += m.fat_g
+    }
+    return totals
+  }, [foodLogs])
 
   const weightSeries = useMemo(() => {
     if (!profile) return []
@@ -140,6 +173,34 @@ export function Dashboard() {
       })
     }
     return { week, day, ph, completed, setsDone, setsTotal }
+  }, [planData])
+
+  // "Upcoming workout" — tomorrow's scheduled session, so there's a heads-up
+  // whenever the app is opened the day/night before.
+  const tomorrowPlan = useMemo(() => {
+    const tomorrow = addDays(todayStr(), 1)
+    const pos = getBlockPos(toDate(tomorrow))
+    if (!pos.active) return null
+    const week = WEEKS[pos.wIdx]
+    const day = week.days[pos.dIdx]
+    if (day.type === R) return null // no heads-up needed for a rest day
+    return { day }
+  }, [])
+
+  // Sunday check-in: how the just-finished week went.
+  const weekSummary = useMemo(() => {
+    if (new Date().getDay() !== 0) return null // only surface on Sundays
+    const pos = getBlockPos()
+    if (!pos.active) return null
+    const week = WEEKS[pos.wIdx]
+    let completed = 0
+    let possible = 0
+    week.days.forEach((d: any, dIdx: number) => {
+      if (d.type === R) return
+      possible += 1
+      if (planData?.cardio?.[`${pos.wIdx}-${dIdx}`]) completed += 1
+    })
+    return { completed, possible }
   }, [planData])
 
   if (!profile) return null
@@ -217,6 +278,58 @@ export function Dashboard() {
             </div>
           </div>
         )}
+        {tomorrowPlan && (
+          <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            Up next: {DAY_ICON[tomorrowPlan.day.type]} {tomorrowPlan.day.title}
+          </p>
+        )}
+      </section>
+
+      {weekSummary && (
+        <section className="rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-5">
+          <h2 className="mb-1 text-sm font-semibold text-slate-200">This week's summary</h2>
+          <p className="text-sm text-slate-300">
+            You completed{' '}
+            <span className="font-semibold text-slate-50">
+              {weekSummary.completed}/{weekSummary.possible}
+            </span>{' '}
+            scheduled sessions this week.{' '}
+            {weekSummary.completed === weekSummary.possible
+              ? 'Every session done — strong week.'
+              : "Anything you didn't finish, log it now or let it go into next week."}
+          </p>
+        </section>
+      )}
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">
+          Today's nutrition
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <ProgressBar
+            label="Calories"
+            value={todayTotals.calories}
+            target={profile.daily_calorie_target ?? 0}
+          />
+          <ProgressBar
+            label="Protein"
+            value={todayTotals.protein_g}
+            target={profile.daily_protein_target_g ?? 0}
+            unit="g"
+          />
+          <ProgressBar
+            label="Carbs"
+            value={todayTotals.carbs_g}
+            target={profile.daily_carb_target_g ?? 0}
+            unit="g"
+          />
+          <ProgressBar
+            label="Fat"
+            value={todayTotals.fat_g}
+            target={profile.daily_fat_target_g ?? 0}
+            unit="g"
+          />
+        </div>
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -300,18 +413,24 @@ export function Dashboard() {
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">
-          Workout consistency — last {WORKOUT_WEEKS} weeks
+        <h2 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-300">
+          Training plan consistency — last {WORKOUT_WEEKS} weeks
         </h2>
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+          Sessions marked complete in the Training Plan tab, out of 6 scheduled per week
+          (Sundays are rest days and don't count).
+        </p>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={workoutSeries}>
             <CartesianGrid strokeDasharray="3 3" stroke={chrome.gridline} vertical={false} />
             <XAxis dataKey="label" tick={{ fill: chrome.mutedInk, fontSize: 11 }} axisLine={{ stroke: chrome.baseline }} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fill: chrome.mutedInk, fontSize: 11 }} axisLine={false} tickLine={false} width={30} />
+            <YAxis domain={[0, 6]} allowDecimals={false} tick={{ fill: chrome.mutedInk, fontSize: 11 }} axisLine={false} tickLine={false} width={30} />
             <Tooltip
               contentStyle={{ background: chrome.surface, border: `1px solid ${chrome.gridline}`, fontSize: 12 }}
               labelStyle={{ color: chrome.primaryInk }}
+              formatter={(v, _n, entry) => [`${v}/${entry.payload.possible} sessions`, 'Completed']}
             />
+            <ReferenceLine y={6} stroke={chrome.baseline} strokeDasharray="4 4" />
             <Bar dataKey="sessions" name="Sessions" fill={colors[0]} radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

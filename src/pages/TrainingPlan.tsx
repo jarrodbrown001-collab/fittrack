@@ -349,9 +349,9 @@ const LIFT_CONFIG = [
 // ═══════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════
-export function getBlockPos() {
+export function getBlockPos(at = new Date()) {
   const start = new Date('2026-06-01');
-  const now = new Date();
+  const now = at;
   const diff = Math.floor((now - start) / 86400000);
   if (diff < 0 || diff >= 84) return { wIdx: 0, dIdx: 4, active: false };
   return { wIdx: Math.floor(diff / 7), dIdx: diff % 7, active: true };

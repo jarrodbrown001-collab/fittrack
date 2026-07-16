@@ -107,6 +107,22 @@ export async function createFood(food: Omit<Food, 'id' | 'created_at'>): Promise
   return row
 }
 
+export async function updateFood(
+  id: string,
+  patch: Partial<Omit<Food, 'id' | 'created_at'>>
+): Promise<Food> {
+  if (cloudEnabled) {
+    return must(await supabase.from('foods').update(patch).eq('id', id).select().single())
+  }
+  const rows = readTable<Food>('foods')
+  const updated = { ...mustFind<Food>('foods', id), ...patch }
+  writeTable(
+    'foods',
+    rows.map((r) => (r.id === id ? updated : r))
+  )
+  return updated
+}
+
 export async function deleteFood(id: string): Promise<void> {
   if (cloudEnabled) {
     // FK cascade removes this food's food_logs server-side.
@@ -233,6 +249,22 @@ export async function createFoodLog(log: {
   }
   writeTable('food_logs', [...readTable<FoodLog>('food_logs'), row])
   return row
+}
+
+export async function updateFoodLog(
+  id: string,
+  patch: Partial<Omit<FoodLog, 'id' | 'created_at'>>
+): Promise<FoodLog> {
+  if (cloudEnabled) {
+    return must(await supabase.from('food_logs').update(patch).eq('id', id).select().single())
+  }
+  const rows = readTable<FoodLog>('food_logs')
+  const updated = { ...mustFind<FoodLog>('food_logs', id), ...patch }
+  writeTable(
+    'food_logs',
+    rows.map((r) => (r.id === id ? updated : r))
+  )
+  return updated
 }
 
 export async function deleteFoodLog(id: string): Promise<void> {

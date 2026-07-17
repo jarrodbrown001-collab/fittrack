@@ -21,14 +21,19 @@ import {
 
 export { S, PW, Z, R, selectBlockAt, BLOCKS };
 
-// The block active right now, resolved once per page load — block
-// boundaries change over days/weeks, not within a session, so this doesn't
-// need to be reactive to a running clock.
+// The block active right now (by real calendar date).
 const ACTIVE_BLOCK = selectBlockAt(new Date()).block;
-export const PH = ACTIVE_BLOCK.PH;
-const WEEK_FOCUS = ACTIVE_BLOCK.WEEK_FOCUS;
-export const WEEKS = ACTIVE_BLOCK.WEEKS;
-const PROG = ACTIVE_BLOCK.PROG;
+
+// These four are reassigned (not just read) when the "Preview" switcher
+// jumps to a different block — see switchBlock() in the App component.
+// Every renderer in this file (WorkoutView, MaxesTab, PhaseWeekBanner, App
+// itself) reads them as free module variables, re-evaluated fresh on every
+// render, so a reassignment right before a state-driven re-render is picked
+// up correctly everywhere in the same pass.
+export let PH = ACTIVE_BLOCK.PH;
+let WEEK_FOCUS = ACTIVE_BLOCK.WEEK_FOCUS;
+export let WEEKS = ACTIVE_BLOCK.WEEKS;
+let PROG = ACTIVE_BLOCK.PROG;
 
 function fmtTimeAgo(iso) {
   if (!iso) return null;
@@ -469,6 +474,30 @@ export function TrainingPlan() {
   const [tab, setTab] = useState("today");
   const [wIdx, setWIdx] = useState(pos.wIdx);
   const [dIdx, setDIdx] = useState(pos.dIdx);
+  const [viewedBlockId, setViewedBlockId] = useState(pos.block.id);
+  const viewedBlock = BLOCKS.find((b) => b.id === viewedBlockId) || pos.block;
+  // True only when the block on screen is the one the real calendar says is
+  // active right now — drives every "— TODAY —" / highlighted-day treatment
+  // below. Previewing a future or past block should never look like "today".
+  const isRealActive = pos.active && viewedBlockId === pos.block.id;
+
+  const switchBlock = (blockId) => {
+    if (blockId === viewedBlockId) return;
+    const block = BLOCKS.find((b) => b.id === blockId);
+    WEEKS = block.WEEKS;
+    PH = block.PH;
+    WEEK_FOCUS = block.WEEK_FOCUS;
+    PROG = block.PROG;
+    setViewedBlockId(blockId);
+    setTab("today");
+    const jumpToRealPosition = pos.active && blockId === pos.block.id;
+    setWIdx(jumpToRealPosition ? pos.wIdx : 0);
+    setDIdx(jumpToRealPosition ? pos.dIdx : 0);
+    // Reload the editable state (sets/weights/cardio/...) from this block's
+    // own storage slice — otherwise the previously-viewed block's logged
+    // checkmarks would show up against this block's exercise list.
+    applyData(fullDoc.blocks[blockId] || {});
+  };
   const [completedSets, setCompletedSets] = useState({});
   const [weights, setWeights] = useState({});
   const [cardio, setCardio] = useState({});
@@ -505,26 +534,31 @@ export function TrainingPlan() {
         const raw = await getTrainingPlanData();
         const migrated = migrateDoc(raw);
         setFullDoc(migrated);
-        applyData(migrated.blocks[ACTIVE_BLOCK.id] || {});
+        applyData(migrated.blocks[viewedBlockId] || {});
       } catch {}
       setLoaded(true);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Frozen historical data from every OTHER block, for merging lift maxes
-  // across the whole training history (see computeMaxes in trainingBlocks.ts).
+  // Frozen historical data from every block OTHER than the one currently
+  // being viewed/edited, for merging lift maxes across the whole training
+  // history (see computeMaxes in trainingBlocks.ts). Keyed off viewedBlockId
+  // (not the real-calendar-active block) so previewing a future block still
+  // pulls in every other block's maxes, itself included once it has its own
+  // logged sets.
   const otherBlocksData = useMemo(() => {
-    return BLOCKS.filter(b => b.id !== ACTIVE_BLOCK.id).map(b => ({
+    return BLOCKS.filter(b => b.id !== viewedBlockId).map(b => ({
       weeks: b.WEEKS,
       weights: fullDoc.blocks[b.id]?.weights || {},
       completedSets: fullDoc.blocks[b.id]?.sets || {},
     }));
-  }, [fullDoc]);
+  }, [fullDoc, viewedBlockId])
 
   const save = async (sets, wts, crd, acts, nts, rns, cex) => {
     const ts = new Date().toISOString();
     const activeData = {sets, weights:wts, cardio:crd, activities:acts, notes:nts, setNotes:rns, customExercises:cex, lastSaved:ts};
-    const newDoc = { ...fullDoc, blocks: { ...fullDoc.blocks, [ACTIVE_BLOCK.id]: activeData }, lastSaved: ts };
+    const newDoc = { ...fullDoc, blocks: { ...fullDoc.blocks, [viewedBlockId]: activeData }, lastSaved: ts };
     setSaveStatus("saving");
     try {
       await saveTrainingPlanData(newDoc);
@@ -631,10 +665,10 @@ export function TrainingPlan() {
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div>
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:20, letterSpacing:3, color:"#F0F4FF" }}>
-              {ACTIVE_BLOCK.label}
+              {viewedBlock.label}
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:3 }}>
-              <span style={{ fontSize:10, color:"#4B5563", letterSpacing:1 }}>{ACTIVE_BLOCK.dateRangeLabel}</span>
+              <span style={{ fontSize:10, color:"#4B5563", letterSpacing:1 }}>{viewedBlock.dateRangeLabel}</span>
               <div style={{ height:2, flex:1, maxWidth:120, background:"rgba(255,255,255,0.06)", borderRadius:1 }}>
                 <div style={{ height:"100%", background:ph.c, width:`${overallPct}%`, borderRadius:1, transition:"width 0.3s" }} />
               </div>
@@ -650,6 +684,26 @@ export function TrainingPlan() {
             </span>
           </div>
         </div>
+        {BLOCKS.length > 1 && (
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:10, flexWrap:"wrap" }}>
+            <span style={{ fontSize:9, color:"#4B5563", letterSpacing:1, fontFamily:"'JetBrains Mono',monospace" }}>VIEWING:</span>
+            {BLOCKS.map(b => {
+              const isSelected = b.id === viewedBlockId;
+              const isTrueActive = b.id === pos.block.id && pos.active;
+              return (
+                <button key={b.id} onClick={()=>switchBlock(b.id)} style={{
+                  padding:"4px 10px", borderRadius:20, fontSize:10, letterSpacing:0.5,
+                  fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700,
+                  background:isSelected?`rgba(${ph.r},0.15)`:"rgba(255,255,255,0.04)",
+                  border:isSelected?`1px solid ${ph.c}`:"1px solid rgba(255,255,255,0.1)",
+                  color:isSelected?ph.c:"#9CA3AF",
+                }}>
+                  {b.label}{isTrueActive?" ● NOW":""}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── TABS ── */}
@@ -667,7 +721,7 @@ export function TrainingPlan() {
           <div style={{ padding:"16px 18px 0", background:`linear-gradient(140deg,rgba(${ph.r},0.08) 0%,transparent 60%)` }}>
             <PhaseWeekBanner week={week} ph={ph} />
             <div style={{ fontSize:10, letterSpacing:3, color:"#4B5563", marginBottom:3 }}>
-              {pos.active?"— TODAY —":"— CURRENT SELECTION —"}
+              {isRealActive?"— TODAY —":"— CURRENT SELECTION —"}
             </div>
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:36, letterSpacing:1, lineHeight:1 }}>
               {day.dn.toUpperCase()}, {day.dt.toUpperCase()}
@@ -701,7 +755,7 @@ export function TrainingPlan() {
           {/* Day strip */}
           <div style={{ display:"flex", overflowX:"auto", gap:8, padding:"12px 18px 14px", scrollbarWidth:"none" }}>
             {week.days.map((d,i) => {
-              const isToday = pos.active && wIdx===pos.wIdx && i===pos.dIdx;
+              const isToday = isRealActive && wIdx===pos.wIdx && i===pos.dIdx;
               const isSel = i===dIdx;
               const typeIcon = {strength:"🏋️",power:"⚡",zone2:"🏃",rest:"✝️"}[d.type];
               const dk = WEEKS.indexOf(week);
@@ -735,9 +789,9 @@ export function TrainingPlan() {
         <div style={{ padding:"16px 18px" }}>
           <div style={{ marginBottom:16 }}>
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:22, letterSpacing:2 }}>PROGRAM OVERVIEW</div>
-            <div style={{ fontSize:11, color:"#6B7280", marginTop:4 }}>June 1 – August 23, 2026 · 12 weeks · 5 phases · Tap any week to view</div>
+            <div style={{ fontSize:11, color:"#6B7280", marginTop:4 }}>{viewedBlock.dateRangeLabel} · {WEEKS.length} weeks · {Object.keys(PH).length} phases · Tap any week to view</div>
           </div>
-          {pos.active && <PhaseWeekBanner week={week} ph={ph} />}
+          {isRealActive && <PhaseWeekBanner week={week} ph={ph} />}
           {/* Phase legend */}
           <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:18 }}>
             {Object.entries(PH).map(([k,p])=>(
@@ -751,7 +805,7 @@ export function TrainingPlan() {
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))", gap:10 }}>
             {WEEKS.map((wk,wi)=>{
               const p = PH[wk.ph];
-              const isCurr = wi===pos.wIdx && pos.active;
+              const isCurr = wi===pos.wIdx && isRealActive;
               const wkTotalSets = wk.days.reduce((a,d)=>a+d.exs.reduce((b,e)=>b+e.s,0),0);
               const wkDone = wk.days.reduce((a,d,di)=>a+d.exs.reduce((b,e,ei)=>b+Math.min(completedSets[`${wi}-${di}-${ei}`]||0,e.s),0),0);
               const wkPct = wkTotalSets>0?Math.round((wkDone/wkTotalSets)*100):0;
@@ -848,7 +902,7 @@ export function TrainingPlan() {
                       const lbs = calcTargetWeight(v, oneRM);
                       return [lbs?`${v}% ≈ ${lbs} lbs`:`${v}%`, cfg.label];
                     }}/>
-                    {pos.active&&<ReferenceLine yAxisId="left" x={PROG[pos.wIdx]?.n} stroke={ph.c} strokeDasharray="5 3" strokeWidth={1.5}/>}
+                    {isRealActive&&<ReferenceLine yAxisId="left" x={PROG[pos.wIdx]?.n} stroke={ph.c} strokeDasharray="5 3" strokeWidth={1.5}/>}
                     {LIFT_CONFIG.map(l=>(
                       <Area key={l.key} yAxisId={l.noPercent?"right":"left"} type="monotone" dataKey={l.key} stroke={l.color} strokeWidth={2} fill="none" connectNulls dot={{fill:l.color,r:2.5,strokeWidth:0}} activeDot={{r:4}}/>
                     ))}
@@ -863,7 +917,7 @@ export function TrainingPlan() {
           <div style={{ fontSize:11, color:"#6B7280", marginBottom:10 }}>Color dot matches the chart legend · Row/Pull-Ups & RDL show actual logged lbs (no %1RM prescribed)</div>
           <div style={{ border:`1px solid ${BORDER}`, borderRadius:10, overflow:"hidden", marginBottom:20 }}>
             {PROG.map((row,i)=>{
-              const isCurrentWk = pos.active && i===pos.wIdx;
+              const isCurrentWk = isRealActive && i===pos.wIdx;
               const wkNum = i+1;
               const rowHist = maxes["Row / Pull-Ups"]?.history || [];
               const rdlHist = maxes["Romanian DL"]?.history || [];

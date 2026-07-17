@@ -25,7 +25,7 @@ import {
 import { addDays, daysAgoStr, formatDateLabel, toDateStr, todayStr } from '../lib/date'
 import { categoricalColors, chartChrome, usePrefersDark } from '../lib/chartColors'
 import { displayToKg, kgToDisplay, weightUnitLabel } from '../lib/units'
-import { getBlockPos, PH, R, S, PW, WEEKS } from './TrainingPlan'
+import { selectBlockAt, migrateDoc, S, PW, R } from '../lib/trainingBlocks'
 import { ProgressBar } from '../components/ProgressBar'
 import type { BodyMetric } from '../types/database'
 
@@ -44,12 +44,6 @@ function mondayOf(dateStr: string): string {
   const diff = day === 0 ? -6 : 1 - day
   d.setDate(d.getDate() + diff)
   return toDateStr(d)
-}
-
-// The plan's calendar starts Monday June 1, 2026 — the same anchor
-// getBlockPos() uses — so a week index maps directly to a real Monday date.
-function mondayForWeekIndex(wIdx: number): string {
-  return addDays('2026-06-01', wIdx * 7)
 }
 
 export function Dashboard() {
@@ -74,7 +68,7 @@ export function Dashboard() {
       ])
       setFoodLogs(fl)
       setBodyMetrics(bm)
-      setPlanData(pd)
+      setPlanData(migrateDoc(pd))
     } finally {
       setLoading(false)
     }
@@ -105,25 +99,23 @@ export function Dashboard() {
 
   // "Consistency" = Training Plan sessions actually marked complete each
   // week, out of the 6 non-rest days the program schedules (Sundays are
-  // rest, so they're excluded from the denominator).
+  // rest, so they're excluded from the denominator). Each trailing Monday
+  // is resolved independently since the 8-week window can span a boundary
+  // between two blocks.
   const workoutSeries = useMemo(() => {
-    // Map each real-calendar Monday in the rolling window back to its
-    // program week index (undefined outside the 12-week block).
-    const mondayToWeekIdx = new Map<string, number>()
-    WEEKS.forEach((_, wIdx) => mondayToWeekIdx.set(mondayForWeekIndex(wIdx), wIdx))
-
     const weeks: { week: string; label: string; sessions: number; possible: number }[] = []
     let cursor = addDays(mondayOf(todayStr()), -7 * (WORKOUT_WEEKS - 1))
     for (let i = 0; i < WORKOUT_WEEKS; i++) {
-      const wIdx = mondayToWeekIdx.get(cursor)
+      const pos = selectBlockAt(toDate(cursor))
       let sessions = 0
       let possible = 0
-      if (wIdx !== undefined) {
-        const week = WEEKS[wIdx]
+      if (pos.active) {
+        const week = pos.block.WEEKS[pos.wIdx]
+        const blockCardio = planData?.blocks?.[pos.block.id]?.cardio
         week.days.forEach((d: any, dIdx: number) => {
           if (d.type === R) return
           possible += 1
-          if (planData?.cardio?.[`${wIdx}-${dIdx}`]) sessions += 1
+          if (blockCardio?.[`${pos.wIdx}-${dIdx}`]) sessions += 1
         })
       }
       weeks.push({ week: cursor, label: formatDateLabel(cursor), sessions, possible })
@@ -157,31 +149,34 @@ export function Dashboard() {
   }, [bodyMetrics, profile])
 
   const todayPlan = useMemo(() => {
-    const pos = getBlockPos()
+    const pos = selectBlockAt(new Date())
     if (!pos.active) return null
-    const week = WEEKS[pos.wIdx]
+    const week = pos.block.WEEKS[pos.wIdx]
     const day = week.days[pos.dIdx]
-    const ph = (PH as any)[week.ph]
+    const ph = (pos.block.PH as any)[week.ph]
+    const blockData = planData?.blocks?.[pos.block.id]
     const key = `${pos.wIdx}-${pos.dIdx}`
-    const completed = Boolean(planData?.cardio?.[key])
+    const completed = Boolean(blockData?.cardio?.[key])
     let setsDone = 0
     let setsTotal = 0
     if (day.type === S || day.type === PW) {
       day.exs.forEach((e: any, ei: number) => {
         setsTotal += e.s
-        setsDone += Math.min(planData?.sets?.[`${pos.wIdx}-${pos.dIdx}-${ei}`] ?? 0, e.s)
+        setsDone += Math.min(blockData?.sets?.[`${pos.wIdx}-${pos.dIdx}-${ei}`] ?? 0, e.s)
       })
     }
     return { week, day, ph, completed, setsDone, setsTotal }
   }, [planData])
 
   // "Upcoming workout" — tomorrow's scheduled session, so there's a heads-up
-  // whenever the app is opened the day/night before.
+  // whenever the app is opened the day/night before. Resolved independently
+  // from today, since tomorrow can belong to a different block (or fall in
+  // a reset gap between two blocks).
   const tomorrowPlan = useMemo(() => {
     const tomorrow = addDays(todayStr(), 1)
-    const pos = getBlockPos(toDate(tomorrow))
+    const pos = selectBlockAt(toDate(tomorrow))
     if (!pos.active) return null
-    const week = WEEKS[pos.wIdx]
+    const week = pos.block.WEEKS[pos.wIdx]
     const day = week.days[pos.dIdx]
     if (day.type === R) return null // no heads-up needed for a rest day
     return { day }
@@ -190,15 +185,16 @@ export function Dashboard() {
   // Sunday check-in: how the just-finished week went.
   const weekSummary = useMemo(() => {
     if (new Date().getDay() !== 0) return null // only surface on Sundays
-    const pos = getBlockPos()
+    const pos = selectBlockAt(new Date())
     if (!pos.active) return null
-    const week = WEEKS[pos.wIdx]
+    const week = pos.block.WEEKS[pos.wIdx]
+    const blockCardio = planData?.blocks?.[pos.block.id]?.cardio
     let completed = 0
     let possible = 0
     week.days.forEach((d: any, dIdx: number) => {
       if (d.type === R) return
       possible += 1
-      if (planData?.cardio?.[`${pos.wIdx}-${dIdx}`]) completed += 1
+      if (blockCardio?.[`${pos.wIdx}-${dIdx}`]) completed += 1
     })
     return { completed, possible }
   }, [planData])

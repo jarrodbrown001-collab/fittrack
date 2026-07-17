@@ -1,415 +1,34 @@
 // @ts-nocheck
-// JB's 12-week summer training plan (June 1 – Aug 23, 2026), ported from the
-// standalone jbs-training-plan-2026 app. Deliberately untyped: this is a large,
-// battle-tested JS component with its own self-contained styling (dark
-// military aesthetic), kept as close to the original as possible. Persistence
-// goes through FitTrack's storage layer ('training_plan' singleton) so the
-// data is included in Settings → Export/Import backups.
+// The training plan tracker, spanning every block Jarrod runs. Deliberately
+// untyped: this is a large, battle-tested JS component with its own
+// self-contained styling (dark military aesthetic), kept as close to the
+// original as possible. Persistence goes through FitTrack's storage layer
+// ('training_plan' doc, namespaced per block — see lib/api.ts) so the data
+// is included in Settings → Export/Import backups.
+//
+// Block content (phases, weekly programs, calendar windows) lives in
+// lib/trainingBlocks.ts — this file only renders whichever block
+// selectBlockAt() says is active right now. Adding a new block after this
+// one means adding an entry there, not editing this file.
 import { useState, useEffect, useMemo } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
 import { getTrainingPlanData, saveTrainingPlanData } from "../lib/api";
+import {
+  BLOCKS, LIFT_CONFIG, S, PW, Z, R,
+  canonical, parseReps, parsePct, getPctLiftName, calcTargetWeight, fmtDate,
+  computeMaxes, selectBlockAt, migrateDoc,
+} from "../lib/trainingBlocks";
 
-// ═══════════════════════════════════════════════════
-// PHASE CONFIG
-// ═══════════════════════════════════════════════════
-export const PH = {
-  1:{name:"FOUNDATION",icon:"🔵",c:"#3B82F6",r:"59,130,246",goal:"Establish movement patterns, build baseline conditioning, and prepare the body for the heavier loading ahead. Challenging but never grinding — finish every session feeling capable, not wrecked."},
-  2:{name:"BUILD",icon:"🟡",c:"#F59E0B",r:"245,158,11",goal:"Increase loading and reduce reps on primary lifts. Add power volume on Fridays. The last 1–2 reps of heavy sets should feel genuinely hard but controlled."},
-  3:{name:"INTENSIFY",icon:"🔴",c:"#EF4444",r:"239,68,68",goal:"Peak loading on primary lifts. Reps drop, intensity climbs. The hardest phase of the block — recovery becomes just as important as training."},
-  4:{name:"PEAK",icon:"⚡",c:"#A855F7",r:"168,85,247",goal:"Express the strength you've built over 9 weeks. Push primary lifts to near-maximum, then true maximum. Warm-up sets matter more here than at any other point."},
-  5:{name:"DELOAD",icon:"🟢",c:"#22C55E",r:"34,197,94",goal:"Full, deliberate recovery. Volume drops ~35–40%, intensity stays moderate. Sessions should feel almost too easy — that's exactly the point."},
-};
-export const S="strength",PW="power",Z="zone2",R="rest";
-const ex=(n,p,s,note)=>({n,p,s,note});
+export { S, PW, Z, R, selectBlockAt, BLOCKS };
 
-// Per-week "what you're targeting this week" reminders
-const WEEK_FOCUS = {
-  1:"Build baseline conditioning and establish clean movement patterns on every lift.",
-  2:"Add 2.5–5 lb where Week 1 was clean. Same patterns, incrementally heavier.",
-  3:"Heaviest week of Foundation — hit phase-high loads on every primary lift before the reset.",
-  4:"Reps drop, load climbs. First taste of Build-phase intensity — stay composed.",
-  5:"Heaviest Build-phase loading — the week before the planned mid-block reset.",
-  6:"Mandatory reset week. Load and volume drop on purpose — do not push through it.",
-  7:"Intensify begins. Reps drop to 2–3, loads climb into the high-80% range.",
-  8:"Highest total Monday load of the block so far — stay disciplined on recovery days.",
-  9:"Final Intensify week — near-single deadlift efforts. Arrive at Peak phase fresh.",
-  10:"Near-max effort week. Work to a heavy 2–3RM on squat/bench and a heavy 2RM on deadlift.",
-  11:"True max week — attempt new 1RM PRs on squat, bench, and deadlift. Log every number.",
-  12:"Deload. Full recovery — reduce volume ~35–40%, keep loads light. Consolidate 11 weeks of work.",
-};
-
-// ═══════════════════════════════════════════════════
-// 12-WEEK WORKOUT DATA
-// ═══════════════════════════════════════════════════
-export const WEEKS=[
-  {w:1,ph:1,range:"June 1–7",days:[
-    {dn:"Monday",dt:"June 1",type:S,title:"Strength: Squat & Bench",restNote:"2–3 min / 90 sec rows",exs:[
-      ex("Back Squat","4 × 5 @ 73%",4,"Control descent, drive through the floor, stay tall"),
-      ex("Bench Press","4 × 6 @ 70%",4,"Retract shoulder blades, controlled lower, press in a straight line"),
-      ex("Barbell Row","3 × 8 — moderate",3,"Pull to lower chest, control the return, no jerking"),
-      ex("Core (Optional)","2–3 sets",3,"Planks or bodyweight split squats — keep it easy"),
-    ]},
-    {dn:"Tuesday",dt:"June 2",type:Z,title:"Zone 2 — Recovery",dur:"60 min",intensity:"Conversational pace — full sentences possible",opts:["Incline walking","Easy cycling","Light rowing"],note:"Flush soreness from Monday. Recovery, not training — do not push.",exs:[]},
-    {dn:"Wednesday",dt:"June 3",type:S,title:"Strength: Deadlift & Upper",restNote:"3 min DL / 2 min others",exs:[
-      ex("Conv. Deadlift","4 × 4 @ 76%",4,"Big breath, brace hard, push the floor away — think push, not pull"),
-      ex("Overhead Press","4 × 6 @ 66%",4,"Squeeze glutes at top, keep ribs down, vertical bar path"),
-      ex("Pull-Ups / Row","3 × 6",3,"Full range — dead hang to chin over bar"),
-      ex("Upper Power","SKIP — Week 1",0,"Focus on primary lifts only this week"),
-    ]},
-    {dn:"Thursday",dt:"June 4",type:Z,title:"Neighborhood Loop Intervals",dur:"3 × 1 mi loops",intensity:"Steady, conversational pace on each loop — nasal breathing. Accessory finisher stays light.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Loop 3 (1 mi)","Accessory: Core/Mobility (5–10 min)"],note:"Run 3 one-mile loops around the neighborhood. After the final loop, do a 5–10 min accessory/mobility finisher — keep it easy, this is establishing the new Thursday structure.",exs:[]},
-    {dn:"Friday",dt:"June 5",type:PW,title:"Power + Strength Blend",restNote:"60–90 sec speed / 2 min RDL & rows",exs:[
-      ex("Speed Squat","5 × 2 @ 54%",5,"Controlled descent, explode out of the hole — max intent every rep"),
-      ex("Bench Press","5 × 3 @ 54%",5,"Lower controlled, press with absolute maximum speed and intention"),
-      ex("Romanian DL","3 × 8",3,"Hinge at hip, feel hamstring stretch, keep back flat"),
-      ex("Row Variation","3 × 10 — light",3,"Hypertrophy focus — full stretch and contraction each rep"),
-    ]},
-    {dn:"Saturday",dt:"June 6",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy, fully uninterrupted aerobic work",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"If fatigued from the week: cap at 35 min and walk only",exs:[]},
-    {dn:"Sunday",dt:"June 7",type:R,title:"Rest / Sabbath",note:"Full rest, light stretching, or easy walk under 20 min. No structured training.",exs:[]},
-  ]},
-  {w:2,ph:1,range:"June 8–14",days:[
-    {dn:"Monday",dt:"June 8",type:S,title:"Strength: Squat & Bench",restNote:"2–3 min / 90 sec rows",exs:[
-      ex("Back Squat","4 × 5 @ 76%",4,"Add 2.5–5 lb from Week 1 if all reps were clean"),
-      ex("Bench Press","4 × 6 @ 73%",4,"Same cues as Week 1 — consistency builds the foundation"),
-      ex("Barbell Row","3 × 8 — add 5 lb",3,"Pull to lower chest, control the return"),
-      ex("Core (Optional)","2–3 sets",3,"Planks or split squats — same as Week 1"),
-    ]},
-    {dn:"Tuesday",dt:"June 9",type:Z,title:"Zone 2 — Recovery",dur:"60 min",intensity:"Conversational pace",opts:["Incline walking","Easy cycling","Light rowing"],note:"Same format as Week 1 — easy recovery effort only",exs:[]},
-    {dn:"Wednesday",dt:"June 10",type:S,title:"Strength: Deadlift & Upper",restNote:"3 min DL / 2 min others",exs:[
-      ex("Conv. Deadlift","4 × 4 @ 78%",4,"Incremental load increase — same cues, more weight"),
-      ex("Push Press","3 × 4 @ 58% OHP",3,"Dip at knee, drive with legs, press overhead — use momentum intentionally"),
-      ex("Overhead Press","4 × 6 @ 68%",4,"Press in a perfectly vertical line — no forward lean. Done right after push press — same pressing block."),
-      ex("Pull-Ups / Row","3 × 7",3,"One more rep than Week 1 — control the full range"),
-    ]},
-    {dn:"Thursday",dt:"June 11",type:Z,title:"Neighborhood Loop Intervals",dur:"3 × 1 mi loops",intensity:"Steady, conversational pace on each loop — nasal breathing. Accessory finisher stays light.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Loop 3 (1 mi)","Accessory: Core/Mobility (5–10 min)"],note:"Same structure as Week 1 — build consistency with the loop + accessory routine.",exs:[]},
-    {dn:"Friday",dt:"June 12",type:PW,title:"Power + Strength Blend",restNote:"60–90 sec speed / 2 min RDL & rows",exs:[
-      ex("Speed Squat","6 × 2 @ 56%",6,"One more set than Week 1 — speed must stay sharp every rep"),
-      ex("Bench Press","6 × 3 @ 56%",6,"Bar velocity is priority — if bar slows, weight is too heavy"),
-      ex("Romanian DL","3 × 8 — add 5 lb",3,"Slow eccentric, feel the stretch — don't rush"),
-      ex("Row Variation","3 × 10 — add 5 lb",3,"Hypertrophy focus — controlled tempo throughout"),
-    ]},
-    {dn:"Saturday",dt:"June 13",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy, fully uninterrupted aerobic work",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"Options: outdoor walk, bike, ruck, jog/walk hybrid",exs:[]},
-    {dn:"Sunday",dt:"June 14",type:R,title:"Rest / Sabbath",note:"Full rest, light stretching, or easy walk under 20 min.",exs:[]},
-  ]},
-  {w:3,ph:1,range:"June 15–21",days:[
-    {dn:"Monday",dt:"June 15",type:S,title:"Strength: Squat & Bench",restNote:"2–3 min / 90 sec rows",exs:[
-      ex("Back Squat","4 × 5 @ 79%",4,"Heaviest Monday of Phase 1 — clean execution above all else"),
-      ex("Bench Press","4 × 6 @ 76%",4,"Highest load of phase — chest tight, shoulder blades locked"),
-      ex("Barbell Row","4 × 8 — add 5 lb",4,"One more set than Week 2 — volume building week over week"),
-      ex("Core (Optional)","2–3 sets",3,"Same movements — consistency over novelty"),
-    ]},
-    {dn:"Tuesday",dt:"June 16",type:Z,title:"Zone 2 — Recovery",dur:"60 min",intensity:"Conversational pace",opts:["Incline walking","Easy cycling","Light rowing"],note:"Final recovery Zone 2 of Phase 1 — stay easy",exs:[]},
-    {dn:"Wednesday",dt:"June 17",type:S,title:"Strength: Deadlift & Upper",restNote:"3 min DL / 2 min others",exs:[
-      ex("Conv. Deadlift","4 × 4 @ 80%",4,"Heaviest deadlift of Phase 1 — treat each set with full focus"),
-      ex("Push Press","3 × 4 @ 61% OHP",3,"Slightly heavier than Week 2 — drive must still come from the legs"),
-      ex("Overhead Press","4 × 6 @ 70%",4,"Highest load of phase — stay strict, no excessive layback. Same pressing block as push press."),
-      ex("Pull-Ups / Row","3 × 8",3,"Two more reps than Week 1 — strength is building"),
-    ]},
-    {dn:"Thursday",dt:"June 18",type:Z,title:"Neighborhood Loop Intervals",dur:"3 × 1 mi loops",intensity:"Steady, conversational pace on each loop — nasal breathing. Accessory finisher stays light.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Loop 3 (1 mi)","Accessory: Core/Mobility (5–10 min)"],note:"Final Foundation Thursday at this loop count — Build phase adds a 4th loop next week.",exs:[]},
-    {dn:"Friday",dt:"June 19",type:PW,title:"Power + Strength Blend",restNote:"60–90 sec speed / 2 min RDL & rows",exs:[
-      ex("Speed Squat","6 × 2 @ 58%",6,"Heaviest speed work of Phase 1 — explosive intent every rep"),
-      ex("Bench Press","6 × 3 @ 58%",6,"Speed and intent — not grinding, not slow"),
-      ex("Romanian DL","3 × 8 — add 5 lb",3,"Highest load of Phase 1 — controlled eccentric, full hip hinge"),
-      ex("Row Variation","3 × 10 — add 5 lb",3,"Phase 1 volume cap — finishing strong"),
-    ]},
-    {dn:"Saturday",dt:"June 20",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy, fully uninterrupted aerobic work",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"Final long Zone 2 of Phase 1 — keep it easy and enjoy it",exs:[]},
-    {dn:"Sunday",dt:"June 21",type:R,title:"Rest / Sabbath",note:"Full rest. Phase 1 complete — foundation is built. Phase 2 starts Monday.",exs:[]},
-  ]},
-  {w:4,ph:2,range:"June 22–28",days:[
-    {dn:"Monday",dt:"June 22",type:S,title:"Strength: Squat & Bench",restNote:"2–3 min / 90 sec rows",exs:[
-      ex("Back Squat","4 × 4 @ 82%",4,"Reps drop to 4, load goes up — intentional. Stay composed."),
-      ex("Bench Press","4 × 5 @ 79%",4,"One fewer rep than Phase 1 — higher intensity per set"),
-      ex("Barbell Row","4 × 6 — heavier",4,"Load increases from Phase 1 — pull with intention"),
-      ex("Core (Optional)","3 sets",3,"Add small weight to split squats if bodyweight became easy"),
-    ]},
-    {dn:"Tuesday",dt:"June 23",type:Z,title:"Zone 2 — Recovery",dur:"60 min",intensity:"Conversational pace — critical after heavier Monday",opts:["Incline walking","Easy cycling","Light rowing"],note:"Do not let Zone 2 creep up in intensity during Build phase.",exs:[]},
-    {dn:"Wednesday",dt:"June 24",type:S,title:"Strength: Deadlift & Upper",restNote:"3 min DL / 2 min others",exs:[
-      ex("Conv. Deadlift","4 × 3 @ 83%",4,"Reps drop, load climbs — treat every set as a near top-set effort"),
-      ex("Push Press","4 × 3 @ 63% OHP",4,"Four sets this week — explosiveness must stay sharp"),
-      ex("Overhead Press","4 × 5 @ 73%",4,"One fewer rep than Phase 1 — heavier and more intentional. Same pressing block as push press."),
-      ex("Pull-Ups / Row","4 × 6 — add load",4,"Add load from Phase 1 — more challenging every week"),
-    ]},
-    {dn:"Thursday",dt:"June 25",type:Z,title:"Neighborhood Loop Intervals",dur:"4 × 1 mi loops",intensity:"Steady, conversational pace on each loop — nasal breathing. Accessory finisher stays light.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Loop 3 (1 mi)","Loop 4 (1 mi)","Accessory: Core/Mobility (5–10 min)"],note:"One more loop than Phase 1 Thursdays — Build phase ramp begins.",exs:[]},
-    {dn:"Friday",dt:"June 26",type:PW,title:"Power + Strength Blend",restNote:"60–90 sec speed / 2 min RDL & rows",exs:[
-      ex("Speed Squat","6 × 2 @ 60%",6,"Bar speed is the metric — if speed drops, rest longer"),
-      ex("Bench Press — Volume","3 × 8 @ 70%",3,"Switching to volume work — controlled tempo, full range"),
-      ex("Romanian DL","3 × 8 — heavier",3,"Heavier than Phase 1 — controlled eccentric, feel the hamstring load"),
-      ex("Row Variation","3 × 10",3,"Maintain load from end of Phase 1"),
-    ]},
-    {dn:"Saturday",dt:"June 27",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy, fully uninterrupted aerobic work",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"Zone 2 building alongside strength",exs:[]},
-    {dn:"Sunday",dt:"June 28",type:R,title:"Rest / Sabbath",note:"Full rest, light stretching, or easy walk under 20 min.",exs:[]},
-  ]},
-  {w:5,ph:2,range:"June 29 – July 5",days:[
-    {dn:"Monday",dt:"June 29",type:S,title:"Strength: Squat & Bench",restNote:"2–3 min / 90 sec rows",exs:[
-      ex("Back Squat","5 × 4 @ 84%",5,"One more set than Week 4 — highest Monday volume of block so far"),
-      ex("Bench Press","4 × 5 @ 81%",4,"Incrementally heavier — last 1–2 reps should feel genuinely hard"),
-      ex("Barbell Row","4 × 6 — add 5 lb",4,"Progressive load — maintain form at heavier weight"),
-      ex("Core (Optional)","3 sets",3,"Continue adding weight if movements allow"),
-    ]},
-    {dn:"Tuesday",dt:"June 30",type:Z,title:"Zone 2 — Recovery",dur:"60 min",intensity:"Conversational pace",opts:["Incline walking","Easy cycling","Light rowing"],note:"Recovery is critical — heaviest Build phase loading mid-week.",exs:[]},
-    {dn:"Wednesday",dt:"July 1",type:S,title:"Strength: Deadlift & Upper",restNote:"3 min DL / 2 min others",exs:[
-      ex("Conv. Deadlift","4 × 3 @ 85%",4,"These will feel heavy — full focus, full brace, no rushing between sets"),
-      ex("Push Press","4 × 3 @ 66% OHP",4,"Heaviest push press so far — leg drive must lead the movement"),
-      ex("Overhead Press","4 × 5 @ 75%",4,"Highest OHP load of Phase 2 — stay strict. Same pressing block as push press."),
-      ex("Pull-Ups / Row","4 × 7",4,"One more rep than Week 4 — strength is building"),
-    ]},
-    {dn:"Thursday",dt:"July 2",type:Z,title:"Neighborhood Loop Intervals",dur:"4 × 1 mi loops",intensity:"Steady, conversational pace on each loop — nasal breathing. Accessory finisher stays light.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Loop 3 (1 mi)","Loop 4 (1 mi)","Accessory: Core/Mobility (5–10 min)"],note:"Same loop count as Week 4 — heaviest Build-phase loading week, keep the run truly easy.",exs:[]},
-    {dn:"Friday",dt:"July 3",type:PW,title:"Power + Strength Blend",restNote:"60–90 sec speed / 2 min RDL & rows",exs:[
-      ex("Speed Squat","7 × 2 @ 61%",7,"One more set than Week 4 — bar speed must stay explosive all 7 sets"),
-      ex("Bench Press — Volume","4 × 8 @ 70%",4,"One more set than Week 4 — highest bench volume day of Phase 2"),
-      ex("Romanian DL","4 × 8",4,"One more set than Week 4 — maintain controlled tempo"),
-      ex("Row Variation","4 × 10",4,"One more set than Week 4 — full range of motion every rep"),
-    ]},
-    {dn:"Saturday",dt:"July 4",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy, fully uninterrupted aerobic work",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"Happy 4th of July — get outside. Long walk, bike ride, anything easy.",exs:[]},
-    {dn:"Sunday",dt:"July 5",type:R,title:"Rest / Sabbath",note:"Full rest, light stretching, or easy walk under 20 min.",exs:[]},
-  ]},
-  {w:6,ph:2,range:"July 6–12",isReset:true,days:[
-    {dn:"Monday",dt:"July 6",type:S,title:"Strength: Squat & Bench (Reset)",restNote:"2–3 min / 90 sec rows",exs:[
-      ex("Back Squat","3 × 5 @ 76%",3,"Noticeably easier than last week — correct and intentional"),
-      ex("Bench Press","3 × 6 @ 73%",3,"Reduced sets, lighter load — quality movement is the goal"),
-      ex("Barbell Row","3 × 8 — moderate",3,"Back to moderate load — do not push"),
-      ex("Core (Optional)","2 sets — easy",2,"Reduce sets and keep effort easy this week"),
-    ]},
-    {dn:"Tuesday",dt:"July 7",type:Z,title:"Zone 2 — Recovery",dur:"60 min",intensity:"Conversational pace",opts:["Incline walking","Easy cycling","Light rowing"],note:"Easy and relaxed — the reset week is working.",exs:[]},
-    {dn:"Wednesday",dt:"July 8",type:S,title:"Strength: Deadlift & Upper (Reset)",restNote:"3 min DL / 2 min others",exs:[
-      ex("Conv. Deadlift","3 × 4 @ 78%",3,"Down from 85% last week — should feel manageable and crisp"),
-      ex("Overhead Press","3 × 6 @ 69%",3,"Lighter load, more reps — quality movement"),
-      ex("Pull-Ups / Row","3 × 6 — moderate",3,"Reset to moderate load — smooth, controlled reps"),
-      ex("Upper Power","SKIP this week",0,"Full reset — skip power work entirely"),
-    ]},
-    {dn:"Thursday",dt:"July 9",type:Z,title:"Neighborhood Loop Intervals (Reset)",dur:"2 × 1 mi loops",intensity:"Easy, relaxed pace — reset week, no need to push.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Accessory: Core/Mobility (5–10 min)"],note:"Reset week — loop count cut roughly in half. Keep it easy.",exs:[]},
-    {dn:"Friday",dt:"July 10",type:PW,title:"Power + Strength Blend (Reset)",restNote:"60–90 sec speed / 2 min RDL & rows",exs:[
-      ex("Speed Squat","5 × 2 @ 55%",5,"Focus purely on bar speed and movement quality — perfect reps"),
-      ex("Bench Press — Speed","4 × 3 @ 55%",4,"Back to speed work — lighter and fast"),
-      ex("Romanian DL","3 × 8 — light",3,"Light and controlled — don't add load this week"),
-      ex("Row Variation","3 × 10 — light",3,"Easy effort — finishing the reset week clean"),
-    ]},
-    {dn:"Saturday",dt:"July 11",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy, fully uninterrupted aerobic work",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"Scaled back — an easy, comfortable long walk or ride",exs:[]},
-    {dn:"Sunday",dt:"July 12",type:R,title:"Rest / Sabbath",note:"Full rest. Phase 2 complete. Reset done — fully prepared for Phase 3.",exs:[]},
-  ]},
-  {w:7,ph:3,range:"July 13–19",days:[
-    {dn:"Monday",dt:"July 13",type:S,title:"Strength: Squat & Bench",restNote:"2–3 min / 90 sec rows",exs:[
-      ex("Back Squat","4 × 3 @ 86%",4,"Reps drop to 3 — heavy and purposeful. No wasted reps."),
-      ex("Bench Press","4 × 4 @ 82%",4,"Highest Monday bench load yet — chest tight, locked in each set"),
-      ex("Barbell Row","4 × 5 — heavy",4,"Heaviest rows of block — pull with control and full ROM"),
-      ex("Core (Optional)","3 sets",3,"Injury prevention is highest priority in Phase 3 — do not skip"),
-    ]},
-    {dn:"Tuesday",dt:"July 14",type:Z,title:"Zone 2 — Recovery",dur:"60 min",intensity:"Conversational pace — CRITICAL to keep easy",opts:["Incline walking","Easy cycling","Light rowing"],note:"Zone 2 is your recovery tool in Phase 3. Pushing it costs you on Wednesday.",exs:[]},
-    {dn:"Wednesday",dt:"July 15",type:S,title:"Strength: Deadlift & Upper",restNote:"3 min DL / 2 min others",exs:[
-      ex("Conv. Deadlift","4 × 2 @ 87%",4,"Near-max double — full setup every rep. Take the full 3+ min rest."),
-      ex("Push Press","4 × 3 @ 67% OHP",4,"Heaviest push press so far — powerful drive from the legs"),
-      ex("Overhead Press","4 × 4 @ 77%",4,"Heavy and controlled — no excessive layback. Same pressing block as push press."),
-      ex("Pull-Ups / Row","4 × 5 — heavy",4,"Heavy pulling work — sets and load climbing every week"),
-    ]},
-    {dn:"Thursday",dt:"July 16",type:Z,title:"Neighborhood Loop Intervals",dur:"4 × 1 mi loops",intensity:"Steady, easy pace — this is recovery, not training. If very fatigued, drop to 3 loops.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Loop 3 (1 mi)","Loop 4 (1 mi)","Accessory: Core/Mobility (5–10 min)"],note:"Intensify begins — back to 4 loops. Zone 2 stays your recovery tool, not a training stimulus.",exs:[]},
-    {dn:"Friday",dt:"July 17",type:PW,title:"Power + Strength Blend",restNote:"60–90 sec speed / 2 min RDL & rows",exs:[
-      ex("Speed Squat","7 × 2 @ 63%",7,"7 sets at higher % — speed is still the goal every rep"),
-      ex("Bench Press — Speed","6 × 3 @ 63%",6,"6 sets — highest speed bench volume so far. Stay fast."),
-      ex("Romanian DL","4 × 6 — heavy",4,"Fewer reps, more load — controlled eccentric throughout"),
-      ex("Row Variation","4 × 8",4,"Heavy rowing accessory — full range every rep"),
-    ]},
-    {dn:"Saturday",dt:"July 18",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Truly easy — do NOT push Zone 2 during Phase 3",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"Longest Zone 2 session of block — stay disciplined about keeping it easy",exs:[]},
-    {dn:"Sunday",dt:"July 19",type:R,title:"Rest / Sabbath",note:"Full rest, light stretching, or easy walk under 20 min.",exs:[]},
-  ]},
-  {w:8,ph:3,range:"July 20–26",days:[
-    {dn:"Monday",dt:"July 20",type:S,title:"Strength: Squat & Bench",restNote:"2–3 min / 90 sec rows",exs:[
-      ex("Back Squat","5 × 3 @ 87%",5,"One more set than Week 7 — highest total Monday load of block"),
-      ex("Bench Press","4 × 4 @ 84%",4,"Incrementally heavier — last rep of each set is a genuine grind"),
-      ex("Barbell Row","4 × 5 — add 5 lb",4,"Progressive load — controlled and intentional every set"),
-      ex("Core (Optional)","3 sets",3,"Maintain injury prevention through Phase 3"),
-    ]},
-    {dn:"Tuesday",dt:"July 21",type:Z,title:"Zone 2 — Recovery",dur:"60 min",intensity:"Conversational pace — keep easy",opts:["Incline walking","Easy cycling","Light rowing"],note:"Full recovery after Monday's heaviest session of the block.",exs:[]},
-    {dn:"Wednesday",dt:"July 22",type:S,title:"Strength: Deadlift & Upper",restNote:"3 min DL / 2 min others",exs:[
-      ex("Conv. Deadlift","4 × 2 @ 89%",4,"Very close to maximum — absolute focus on setup, brace, execution"),
-      ex("Push Press","4 × 3 @ 70% OHP",4,"70% is heavy for power — drive must still be explosive"),
-      ex("Overhead Press","4 × 4 @ 79%",4,"Heavier than Week 7 — stay strict, no forward lean. Same pressing block as push press."),
-      ex("Pull-Ups / Row","4 × 5 — add load",4,"Load increases from Week 7 — maintain form as weight climbs"),
-    ]},
-    {dn:"Thursday",dt:"July 23",type:Z,title:"Neighborhood Loop Intervals",dur:"4 × 1 mi loops",intensity:"Steady, easy pace — recovery is training in Phase 3.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Loop 3 (1 mi)","Loop 4 (1 mi)","Accessory: Core/Mobility (5–10 min)"],note:"Same as Week 7 — if very fatigued, drop to 3 loops and skip the accessory finisher.",exs:[]},
-    {dn:"Friday",dt:"July 24",type:PW,title:"Power + Strength Blend",restNote:"60–90 sec speed / 2 min RDL & rows",exs:[
-      ex("Speed Squat","8 × 2 @ 65%",8,"Highest speed squat volume of block — bar speed non-negotiable"),
-      ex("Bench Press — Speed","6 × 3 @ 65%",6,"Heavier speed work — if bar slows, reduce weight not sets"),
-      ex("Romanian DL","4 × 6 — add 5 lb",4,"Heaviest RDL yet — maintain the controlled eccentric"),
-      ex("Row Variation","4 × 8 — add load",4,"Load increases from Week 7 — strong pull, full range"),
-    ]},
-    {dn:"Saturday",dt:"July 25",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy and uninterrupted",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"Keep intensity easy — do not push Zone 2 during Phase 3",exs:[]},
-    {dn:"Sunday",dt:"July 26",type:R,title:"Rest / Sabbath",note:"Full rest, light stretching, or easy walk under 20 min.",exs:[]},
-  ]},
-  {w:9,ph:3,range:"July 27 – Aug 2",days:[
-    {dn:"Monday",dt:"July 27",type:S,title:"Strength: Squat & Bench",restNote:"2–3 min / 90 sec rows",exs:[
-      ex("Back Squat","5 × 2 @ 89%",5,"Reps drop to 2 — load same as Week 8. More quality, less volume."),
-      ex("Bench Press","4 × 3 @ 86%",4,"Reps drop — this is the final approach before Peak"),
-      ex("Barbell Row","4 × 5 — add 5 lb",4,"Heaviest rows of block — controlled and strong"),
-      ex("Core (Optional)","3 sets",3,"Do not skip — injury prevention most critical final Intensify week"),
-    ]},
-    {dn:"Tuesday",dt:"July 28",type:Z,title:"Zone 2 — Recovery",dur:"35–40 min",intensity:"Conversational pace",opts:["Incline walking","Easy cycling","Light rowing"],note:"Keep this easy. Peak starts next week — arrive there fresh.",exs:[]},
-    {dn:"Wednesday",dt:"July 29",type:S,title:"Strength: Deadlift & Upper",restNote:"3 min DL / 2 min others",exs:[
-      ex("Conv. Deadlift","3 × 1 @ 91%",3,"Near-single efforts — treat every rep as a true max. Full reset between lifts."),
-      ex("Push Press","4 × 3 @ 72% OHP",4,"Highest push press load — explosive drive must still lead"),
-      ex("Overhead Press","4 × 3 @ 81%",4,"Highest OHP load of block — stay strict and deliberate. Same pressing block as push press."),
-      ex("Pull-Ups / Row","4 × 5 — add load",4,"Heaviest pulling of block — full range, controlled return"),
-    ]},
-    {dn:"Thursday",dt:"July 30",type:Z,title:"Neighborhood Loop Intervals",dur:"3 × 1 mi loops",intensity:"Steady, easy pace — tapering into Peak phase.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Loop 3 (1 mi)","Accessory: Core/Mobility (5 min)"],note:"Tapering into Peak — one fewer loop and a shorter accessory finisher to arrive fresh. If fatigue is severe, walk the loops instead.",exs:[]},
-    {dn:"Friday",dt:"July 31",type:PW,title:"Power + Strength Blend",restNote:"60–90 sec speed / 2 min RDL & rows",exs:[
-      ex("Speed Squat","8 × 2 @ 65%",8,"If very fatigued, drop to 6 sets — speed is priority, not volume"),
-      ex("Bench Press — Speed","6 × 3 @ 65%",6,"Same as Week 8 — maintain speed and quality"),
-      ex("Romanian DL","4 × 5 — heavier",4,"Fewer reps, more load — final RDL push of Phase 3"),
-      ex("Row Variation","4 × 8 — add load",4,"Heaviest row accessory of block"),
-    ]},
-    {dn:"Saturday",dt:"Aug 1",type:Z,title:"Zone 2 — Long",dur:"55–60 min",intensity:"Truly easy — final long Zone 2 before Peak",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"The last long Zone 2 of the block. Easy effort — you have earned it.",exs:[]},
-    {dn:"Sunday",dt:"Aug 2",type:R,title:"Rest / Sabbath",note:"Full rest. Phase 3 complete. Hardest work is done. Phase 4 is the payoff.",exs:[]},
-  ]},
-  {w:10,ph:4,range:"Aug 3–9",days:[
-    {dn:"Monday",dt:"Aug 3",type:S,title:"Squat & Bench — Near-Max Effort",restNote:"3+ min between all top sets",exs:[
-      ex("Back Squat","Heavy 2–3RM",1,"Take 4–5 build-up sets. Heaviest 2–3 reps you can complete cleanly. Do not miss."),
-      ex("Bench Press","Heavy 3RM",1,"4–5 build-up sets. Heaviest controlled 3-rep set you can complete."),
-      ex("Barbell Row","3 × 5 — moderate",3,"Support work only — do not fatigue back before primary lifts"),
-    ]},
-    {dn:"Tuesday",dt:"Aug 4",type:Z,title:"Zone 2 — Recovery",dur:"30 min easy walk only",intensity:"Conversational — flat and easy",opts:["Easy flat walk only"],note:"Full recovery after Monday near-max. No rucking. No incline. No impact.",exs:[]},
-    {dn:"Wednesday",dt:"Aug 5",type:S,title:"Deadlift & Upper — Near-Max Effort",restNote:"3+ min between all top sets",exs:[
-      ex("Conv. Deadlift","Heavy 2RM",1,"4–5 build-up sets — methodical and patient. Heaviest double you can pull cleanly."),
-      ex("Push Press","3 × 3 @ 70% OHP",3,"Power accessory — keep it crisp and controlled"),
-      ex("Overhead Press","Heavy 3RM",1,"4 build-up sets. Heaviest controlled 3-rep press. Same pressing block as push press."),
-      ex("Pull-Ups / Row","3 × 5 — moderate",3,"Support work only — don't fatigue pulling before deadlift test"),
-    ]},
-    {dn:"Thursday",dt:"Aug 6",type:Z,title:"Neighborhood Loop Intervals (Light)",dur:"2 × 1 mi loops",intensity:"Walk pace or easy jog only — no impact, no rucking. This is recovery before next week's max effort.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Accessory: Mobility (5 min, optional)"],note:"Peak phase — loops stay light and short. Walk them if there's any lingering fatigue from Monday's near-max work.",exs:[]},
-    {dn:"Friday",dt:"Aug 7",type:PW,title:"Speed Work Only — No Max Effort",restNote:"60–90 sec between speed sets",exs:[
-      ex("Speed Squat","6 × 2 @ 58%",6,"Fast and crisp — CNS priming for next week. Not fatigue accumulation."),
-      ex("Speed Bench","5 × 3 @ 58%",5,"Explosive intent — light and fast"),
-      ex("Romanian DL","3 × 8 — moderate",3,"Movement quality focus — keep it easy"),
-      ex("Row","3 × 8 — moderate",3,"Easy accessory — no heavy pulling this week"),
-    ]},
-    {dn:"Saturday",dt:"Aug 8",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy and comfortable",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"Celebrate a strong near-max week. Keep it relaxed and enjoyable.",exs:[]},
-    {dn:"Sunday",dt:"Aug 9",type:R,title:"Rest / Sabbath",note:"Full rest, light stretching, or easy walk under 20 min.",exs:[]},
-  ]},
-  {w:11,ph:4,range:"Aug 10–16",days:[
-    {dn:"Monday",dt:"Aug 10",type:S,title:"Squat & Bench — TRUE MAX",restNote:"Full 3–5 min between all sets",exs:[
-      ex("Back Squat","True 1–2RM",1,"Take 5 build-up sets. Patient warm-up. Attempt new personal record. LOG IT."),
-      ex("Bench Press","True 1–2RM",1,"4–5 build-up sets. True max — if it goes up clean, that is your new 1RM."),
-      ex("Barbell Row","3 × 5 — light",3,"Light only — back must be fresh for deadlift max Wednesday"),
-    ]},
-    {dn:"Tuesday",dt:"Aug 11",type:Z,title:"Zone 2 — Recovery",dur:"30 min easy walk only",intensity:"Conversational — flat and easy",opts:["Easy flat walk only"],note:"Full recovery before Wednesday deadlift max — biggest lift of the block.",exs:[]},
-    {dn:"Wednesday",dt:"Aug 12",type:S,title:"Deadlift & Upper — TRUE MAX",restNote:"Full 3–5 min — take all the time you need",exs:[
-      ex("Conv. Deadlift","True 1RM",1,"Biggest lift of block. 5 patient build-up sets. Full focus every warm-up rep. NEW MAX."),
-      ex("Overhead Press","True 2–3RM",1,"4 build-up sets. Heaviest controlled OHP of the block."),
-      ex("Pull-Ups / Row","3 × 5 — light",3,"Light support only after the deadlift max"),
-    ]},
-    {dn:"Thursday",dt:"Aug 13",type:Z,title:"Neighborhood Loop Intervals (Light)",dur:"2 × 1 mi loops",intensity:"Walk pace or easy jog only — fully restorative after Wednesday's deadlift max.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Accessory: Mobility (5 min, optional)"],note:"Easy and restorative. You have done the work — keep this truly light.",exs:[]},
-    {dn:"Friday",dt:"Aug 14",type:PW,title:"Light Speed Work Only",restNote:"60–90 sec between speed sets",exs:[
-      ex("Speed Squat","5 × 2 @ 55%",5,"Light, fast, and done. No fatigue accumulation before deload."),
-      ex("Speed Bench","4 × 3 @ 55%",4,"Crisp and intentional — movement quality over anything"),
-      ex("Romanian DL","2 × 8 — light",2,"Light movement quality work only — do not load this"),
-    ]},
-    {dn:"Saturday",dt:"Aug 15",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy and comfortable",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"You have earned this one. Celebrate what you built over 11 weeks.",exs:[]},
-    {dn:"Sunday",dt:"Aug 16",type:R,title:"Rest / Sabbath",note:"Full rest. New maxes are logged. The deload is your reward.",exs:[]},
-  ]},
-  {w:12,ph:5,range:"Aug 17–23",days:[
-    {dn:"Monday",dt:"Aug 17",type:S,title:"Strength: Squat & Bench (Deload)",restNote:"2 min between all sets",exs:[
-      ex("Back Squat","3 × 5 @ 65%",3,"Should feel almost too easy. That is the point — absorb 11 weeks of work."),
-      ex("Bench Press","3 × 5 @ 65%",3,"Reduced sets, lighter load — quality movement only"),
-      ex("Barbell Row","2 × 8 — light",2,"Easy pulling — no pushing for load this week"),
-    ]},
-    {dn:"Tuesday",dt:"Aug 18",type:Z,title:"Zone 2 — Recovery",dur:"60 min",intensity:"Conversational pace",opts:["Easy flat walking preferred"],note:"Short and easy. You are in full recovery mode.",exs:[]},
-    {dn:"Wednesday",dt:"Aug 19",type:S,title:"Strength: Deadlift & Upper (Deload)",restNote:"2 min between all sets",exs:[
-      ex("Conv. Deadlift","3 × 3 @ 65%",3,"Light and controlled — movement quality, not loading"),
-      ex("Overhead Press","3 × 5 @ 65%",3,"Easy effort — no grinding, no intensity"),
-      ex("Pull-Ups / Row","2 × 6 — light",2,"Easy pulling — just moving the body"),
-    ]},
-    {dn:"Thursday",dt:"Aug 20",type:Z,title:"Neighborhood Loop Intervals (Light)",dur:"2 × 1 mi loops",intensity:"Easy and comfortable — well below steady state. Walk pace is fine.",opts:["Loop 1 (1 mi)","Loop 2 (1 mi)","Accessory: Mobility (5 min, optional)"],note:"Deload week is full recovery — keep these loops short and relaxed, no different from a comfortable walk.",exs:[]},
-    {dn:"Friday",dt:"Aug 21",type:PW,title:"Light Movement (Deload)",restNote:"60–90 sec between all sets",exs:[
-      ex("Speed Squat","4 × 2 @ 50%",4,"Light, fast, smooth — just moving the body through the pattern"),
-      ex("Bench Press","3 × 5 @ 65%",3,"Easy movement — no intensity"),
-      ex("Romanian DL","2 × 8 — light",2,"Movement quality focus — no loading"),
-    ]},
-    {dn:"Saturday",dt:"Aug 22",type:Z,title:"Zone 2 — Long",dur:"60 min",intensity:"Easy — whatever sounds enjoyable",opts:["Outdoor walk","Bike ride","Rucking","Jog/walk hybrid"],note:"Optional outdoor walk or relaxed bike ride. Celebrate completing 12 weeks!",exs:[]},
-    {dn:"Sunday",dt:"Aug 23",type:R,title:"Rest / Sabbath",note:"BLOCK COMPLETE — Aug 23, 2026. Take 3–5 days complete rest before follow-on plan.",exs:[]},
-  ]},
-];
-
-// ═══════════════════════════════════════════════════
-// PROGRESSION DATA
-// ═══════════════════════════════════════════════════
-const PROG=[
-  {n:"Wk1",sq:73,dl:76,bp:70,ohp:66,pp:null},{n:"Wk2",sq:76,dl:78,bp:73,ohp:68,pp:58},{n:"Wk3",sq:79,dl:80,bp:76,ohp:70,pp:61},
-  {n:"Wk4",sq:82,dl:83,bp:79,ohp:73,pp:63},{n:"Wk5",sq:84,dl:85,bp:81,ohp:75,pp:66},{n:"Wk6↓",sq:76,dl:78,bp:73,ohp:69,pp:null},
-  {n:"Wk7",sq:86,dl:87,bp:82,ohp:77,pp:67},{n:"Wk8",sq:87,dl:89,bp:84,ohp:79,pp:70},{n:"Wk9",sq:89,dl:91,bp:86,ohp:81,pp:72},
-  {n:"Wk10",sq:93,dl:95,bp:93,ohp:93,pp:70},{n:"Wk11",sq:100,dl:100,bp:100,ohp:100,pp:null},{n:"Wk12↓",sq:65,dl:65,bp:65,ohp:65,pp:null},
-];
-
-// Lift display config for the consolidated load progression chart/table
-const LIFT_CONFIG = [
-  { key:"sq",  label:"Squat",      shortLabel:"SQ",  name:"Back Squat",      color:"#3B82F6" },
-  { key:"dl",  label:"Deadlift",   shortLabel:"DL",  name:"Deadlift",        color:"#F97316" },
-  { key:"bp",  label:"Bench",      shortLabel:"BP",  name:"Bench Press",     color:"#22C55E" },
-  { key:"ohp", label:"OHP",        shortLabel:"OHP", name:"Overhead Press",  color:"#A855F7" },
-  { key:"pp",  label:"Push Press", shortLabel:"PP",  name:"Overhead Press",  color:"#EC4899" }, // % is of OHP 1RM per program
-  { key:"row", label:"Row/Pull-Ups", shortLabel:"ROW", name:"Row / Pull-Ups", color:"#06B6D4", noPercent:true }, // no %1RM prescribed — actual lbs logged
-  { key:"rdl", label:"Romanian DL",  shortLabel:"RDL", name:"Romanian DL",    color:"#FACC15", noPercent:true }, // no %1RM prescribed — actual lbs logged
-];
-
-// ═══════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════
-export function getBlockPos(at = new Date()) {
-  // 'T00:00:00' forces local-midnight parsing — a bare date-only string
-  // ("2026-06-01") parses as UTC midnight, which for anyone west of UTC
-  // (e.g. Central time) rolls the program day over 5-6 hours early, in
-  // the evening rather than at actual local midnight.
-  const start = new Date('2026-06-01T00:00:00');
-  const now = at;
-  const diff = Math.floor((now - start) / 86400000);
-  if (diff < 0 || diff >= 84) return { wIdx: 0, dIdx: 4, active: false };
-  return { wIdx: Math.floor(diff / 7), dIdx: diff % 7, active: true };
-}
-
-// ═══════════════════════════════════════════════════
-// LIFT TRACKING HELPERS
-// ═══════════════════════════════════════════════════
-function canonical(name) {
-  const n = name.toLowerCase();
-  if (n.includes("skip") || n.includes("core") || n.includes("upper power")) return null;
-  if (n.includes("romanian") || n.startsWith("rdl")) return "Romanian DL";
-  if (n.includes("deadlift")) return "Deadlift";
-  if (n.includes("squat")) return "Back Squat";
-  if (n.includes("push press")) return "Push Press";
-  if (n.includes("bench") || n === "speed bench") return "Bench Press";
-  if (n.includes("overhead press") || (n.includes("press") && !n.includes("push"))) return "Overhead Press";
-  if (n.includes("row") || n.includes("pull")) return "Row / Pull-Ups";
-  return null;
-}
-
-function parseReps(p) {
-  let m = p.match(/×\s*(\d+)/);
-  if (m) return parseInt(m[1]);
-  m = p.match(/(\d+)[–\-]?\d*\s*RM/i);
-  if (m) return parseInt(m[1]);
-  return 1;
-}
-
-function parsePct(p) {
-  const m = p.match(/@\s*(\d+)%/);
-  return m ? parseInt(m[1]) : null;
-}
-
-// Some prescriptions reference a percentage of a DIFFERENT lift's 1RM
-// (e.g. Push Press "@ 63% OHP" is 63% of Overhead Press 1RM, not Push Press's own).
-function getPctLiftName(ex) {
-  if (/OHP/i.test(ex.p)) return "Overhead Press";
-  return canonical(ex.n);
-}
-
-function calcTargetWeight(pct, oneRM) {
-  if (!oneRM || !pct) return null;
-  return Math.round((oneRM * pct / 100) / 5) * 5;
-}
-
-const MONTH_NUM = { June:6, July:7, Aug:8, August:8 };
-function fmtDate(dt) {
-  // dt is like "June 1" or "Aug 3" or "June 29 – July 5" (range, take first)
-  const first = dt.split(/[–-]/)[0].trim();
-  const [mon, day] = first.split(/\s+/);
-  const m = MONTH_NUM[mon];
-  return m ? `${m}/${parseInt(day)}` : dt;
-}
+// The block active right now, resolved once per page load — block
+// boundaries change over days/weeks, not within a session, so this doesn't
+// need to be reactive to a running clock.
+const ACTIVE_BLOCK = selectBlockAt(new Date()).block;
+export const PH = ACTIVE_BLOCK.PH;
+const WEEK_FOCUS = ACTIVE_BLOCK.WEEK_FOCUS;
+export const WEEKS = ACTIVE_BLOCK.WEEKS;
+const PROG = ACTIVE_BLOCK.PROG;
 
 function fmtTimeAgo(iso) {
   if (!iso) return null;
@@ -425,37 +44,6 @@ function fmtTimeAgo(iso) {
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay === 1) return `yesterday ${t}`;
   return `${d.getMonth()+1}/${d.getDate()} ${t}`;
-}
-
-function computeMaxes(weights, completedSets) {
-  const result = {};
-  WEEKS.forEach((wk, wIdx) => {
-    wk.days.forEach((day, dIdx) => {
-      day.exs.forEach((ex, exIdx) => {
-        const cName = canonical(ex.n);
-        if (!cName || ex.s === 0) return;
-        const setsCompleted = completedSets[`${wIdx}-${dIdx}-${exIdx}`] || 0;
-        if (setsCompleted === 0) return;
-        const reps = parseReps(ex.p);
-        let bestW = 0;
-        for (let s = 0; s < setsCompleted; s++) {
-          const w = parseFloat(weights[`${wIdx}-${dIdx}-${exIdx}-${s}`] || "0");
-          if (w > bestW) bestW = w;
-        }
-        if (bestW === 0) return;
-        const est1RM = reps === 1 ? bestW : Math.round(bestW * (1 + reps / 30));
-        if (!result[cName]) result[cName] = { maxWeight:0, maxReps:1, max1RM:0, maxDate:"", maxWeek:0, history:[] };
-        const entry = { week:wk.w, date:day.dt, weight:bestW, reps, est1RM };
-        const hi = result[cName].history.findIndex(h => h.week===wk.w && h.date===day.dt);
-        if (hi >= 0) { if (est1RM > result[cName].history[hi].est1RM) result[cName].history[hi] = entry; }
-        else result[cName].history.push(entry);
-        if (est1RM > result[cName].max1RM) {
-          Object.assign(result[cName], { maxWeight:bestW, maxReps:reps, max1RM:est1RM, maxDate:day.dt, maxWeek:wk.w });
-        }
-      });
-    });
-  });
-  return result;
 }
 
 // ═══════════════════════════════════════════════════
@@ -753,8 +341,11 @@ function WorkoutView({ week, day, wIdx, dIdx, completedSets, onToggle, weights, 
 // ═══════════════════════════════════════════════════
 // MAXES TAB
 // ═══════════════════════════════════════════════════
-function MaxesTab({ weights, completedSets, notes, onNote, ph }) {
-  const maxes = useMemo(() => computeMaxes(weights, completedSets), [weights, completedSets]);
+function MaxesTab({ weights, completedSets, notes, onNote, ph, otherBlocksData }) {
+  const maxes = useMemo(
+    () => computeMaxes(WEEKS, weights, completedSets, otherBlocksData),
+    [weights, completedSets, otherBlocksData]
+  );
   const [expanded, setExpanded] = useState({});
   const CARD = "#0F1320", BORDER = "rgba(255,255,255,0.07)";
   const PRIMARY   = ["Back Squat","Bench Press","Deadlift","Overhead Press"];
@@ -874,7 +465,7 @@ function PhaseWeekBanner({ week, ph }) {
 // MAIN APP
 // ═══════════════════════════════════════════════════
 export function TrainingPlan() {
-  const pos = getBlockPos();
+  const pos = selectBlockAt(new Date());
   const [tab, setTab] = useState("today");
   const [wIdx, setWIdx] = useState(pos.wIdx);
   const [dIdx, setDIdx] = useState(pos.dIdx);
@@ -885,6 +476,7 @@ export function TrainingPlan() {
   const [notes, setNotes] = useState({});
   const [repNotes, setRepNotes] = useState({});
   const [customExercises, setCustomExercises] = useState({});
+  const [fullDoc, setFullDoc] = useState({ blocks: {} });
   const [loaded, setLoaded] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
@@ -910,19 +502,33 @@ export function TrainingPlan() {
   useEffect(() => {
     (async () => {
       try {
-        const d = await getTrainingPlanData();
-        if (d) applyData(d);
+        const raw = await getTrainingPlanData();
+        const migrated = migrateDoc(raw);
+        setFullDoc(migrated);
+        applyData(migrated.blocks[ACTIVE_BLOCK.id] || {});
       } catch {}
       setLoaded(true);
     })();
   }, []);
 
+  // Frozen historical data from every OTHER block, for merging lift maxes
+  // across the whole training history (see computeMaxes in trainingBlocks.ts).
+  const otherBlocksData = useMemo(() => {
+    return BLOCKS.filter(b => b.id !== ACTIVE_BLOCK.id).map(b => ({
+      weeks: b.WEEKS,
+      weights: fullDoc.blocks[b.id]?.weights || {},
+      completedSets: fullDoc.blocks[b.id]?.sets || {},
+    }));
+  }, [fullDoc]);
+
   const save = async (sets, wts, crd, acts, nts, rns, cex) => {
     const ts = new Date().toISOString();
-    const data = {sets, weights:wts, cardio:crd, activities:acts, notes:nts, setNotes:rns, customExercises:cex, lastSaved:ts};
+    const activeData = {sets, weights:wts, cardio:crd, activities:acts, notes:nts, setNotes:rns, customExercises:cex, lastSaved:ts};
+    const newDoc = { ...fullDoc, blocks: { ...fullDoc.blocks, [ACTIVE_BLOCK.id]: activeData }, lastSaved: ts };
     setSaveStatus("saving");
     try {
-      await saveTrainingPlanData(data);
+      await saveTrainingPlanData(newDoc);
+      setFullDoc(newDoc);
       setLastSaved(ts);
       setSaveStatus("saved");
     } catch {
@@ -994,8 +600,13 @@ export function TrainingPlan() {
   const doneAllSets = Object.values(completedSets).reduce((a,v)=>a+v,0);
   const overallPct = totalAllSets > 0 ? Math.round(Math.min((doneAllSets/totalAllSets)*100, 100)) : 0;
 
-  // Live 1RM estimates — drives target weight calculations across all workouts
-  const maxes = useMemo(() => computeMaxes(weights, completedSets), [weights, completedSets]);
+  // Live 1RM estimates — drives target weight calculations across all workouts.
+  // Merges in frozen history from every other block so a new block's targets
+  // are informed by maxes set previously, not blind on day one.
+  const maxes = useMemo(
+    () => computeMaxes(WEEKS, weights, completedSets, otherBlocksData),
+    [weights, completedSets, otherBlocksData]
+  );
 
   if (!loaded) return (
     <div style={{ background:BG, height:"100vh", display:"flex", alignItems:"center", justifyContent:"center", color:"#4B5563", fontFamily:"'JetBrains Mono',monospace", fontSize:12, letterSpacing:2 }}>
@@ -1020,10 +631,10 @@ export function TrainingPlan() {
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
           <div>
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:20, letterSpacing:3, color:"#F0F4FF" }}>
-              JB'S SUMMER TRAINING PLAN
+              {ACTIVE_BLOCK.label}
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:3 }}>
-              <span style={{ fontSize:10, color:"#4B5563", letterSpacing:1 }}>JUN 1 – AUG 23, 2026</span>
+              <span style={{ fontSize:10, color:"#4B5563", letterSpacing:1 }}>{ACTIVE_BLOCK.dateRangeLabel}</span>
               <div style={{ height:2, flex:1, maxWidth:120, background:"rgba(255,255,255,0.06)", borderRadius:1 }}>
                 <div style={{ height:"100%", background:ph.c, width:`${overallPct}%`, borderRadius:1, transition:"width 0.3s" }} />
               </div>
@@ -1080,7 +691,7 @@ export function TrainingPlan() {
               <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:18, letterSpacing:2 }}>WEEK {week.w} — {week.range}</div>
               {week.isReset && <div style={{ fontSize:10, color:"#F59E0B", letterSpacing:1, marginTop:2 }}>⚠ MID-BLOCK RESET WEEK</div>}
             </div>
-            <button onClick={()=>setWIdx(Math.min(11,wIdx+1))} disabled={wIdx===11} style={{ background:"transparent", border:`1px solid ${wIdx===11?"rgba(255,255,255,0.06)":"rgba(255,255,255,0.15)"}`, color:wIdx===11?"#374151":"#E2E8F0", borderRadius:6, padding:"6px 14px", fontFamily:"'JetBrains Mono',monospace", fontSize:14, opacity:wIdx===11?0.4:1 }}>→</button>
+            <button onClick={()=>setWIdx(Math.min(WEEKS.length-1,wIdx+1))} disabled={wIdx===WEEKS.length-1} style={{ background:"transparent", border:`1px solid ${wIdx===WEEKS.length-1?"rgba(255,255,255,0.06)":"rgba(255,255,255,0.15)"}`, color:wIdx===WEEKS.length-1?"#374151":"#E2E8F0", borderRadius:6, padding:"6px 14px", fontFamily:"'JetBrains Mono',monospace", fontSize:14, opacity:wIdx===WEEKS.length-1?0.4:1 }}>→</button>
           </div>
 
           <div style={{ padding:"14px 18px 0" }}>
@@ -1191,7 +802,7 @@ export function TrainingPlan() {
 
       {/* ══════════════════════ MAXES ══════════════════════ */}
       {tab==="maxes" && (
-        <MaxesTab weights={weights} completedSets={completedSets} notes={notes} onNote={handleNote} ph={ph} />
+        <MaxesTab weights={weights} completedSets={completedSets} notes={notes} onNote={handleNote} ph={ph} otherBlocksData={otherBlocksData} />
       )}
 
       {/* ══════════════════════ PROGRESS ══════════════════════ */}

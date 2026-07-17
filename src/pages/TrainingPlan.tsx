@@ -350,7 +350,11 @@ const LIFT_CONFIG = [
 // HELPERS
 // ═══════════════════════════════════════════════════
 export function getBlockPos(at = new Date()) {
-  const start = new Date('2026-06-01');
+  // 'T00:00:00' forces local-midnight parsing — a bare date-only string
+  // ("2026-06-01") parses as UTC midnight, which for anyone west of UTC
+  // (e.g. Central time) rolls the program day over 5-6 hours early, in
+  // the evening rather than at actual local midnight.
+  const start = new Date('2026-06-01T00:00:00');
   const now = at;
   const diff = Math.floor((now - start) / 86400000);
   if (diff < 0 || diff >= 84) return { wIdx: 0, dIdx: 4, active: false };

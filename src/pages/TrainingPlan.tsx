@@ -16,7 +16,7 @@ import { getTrainingPlanData, saveTrainingPlanData } from "../lib/api";
 import {
   BLOCKS, LIFT_CONFIG, S, PW, Z, R,
   canonical, parseReps, parsePct, getPctLiftName, calcTargetWeight, fmtDate,
-  computeMaxes, selectBlockAt, migrateDoc,
+  computeMaxes, selectBlockAt, migrateDoc, getBlockStatus,
 } from "../lib/trainingBlocks";
 
 export { S, PW, Z, R, selectBlockAt, BLOCKS };
@@ -508,6 +508,7 @@ export function TrainingPlan() {
   const [fullDoc, setFullDoc] = useState({ blocks: {} });
   const [loaded, setLoaded] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
   const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved | error
   const [, setTick] = useState(0);
@@ -613,6 +614,17 @@ export function TrainingPlan() {
   };
 
   const handleReset = async () => {
+    if (resetConfirmText.trim().toUpperCase() !== "RESET") return;
+    // Safety net: download everything about to be wiped before touching it.
+    const backup = { sets:completedSets, weights, cardio, activities, notes, setNotes:repNotes, customExercises, lastSaved };
+    const blob = new Blob([JSON.stringify({ block: viewedBlockId, ...backup }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${viewedBlockId}-backup-before-reset-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
     setCompletedSets({});
     setWeights({});
     setCardio({});
@@ -622,6 +634,7 @@ export function TrainingPlan() {
     setCustomExercises({});
     await save({}, {}, {}, {}, {}, {}, {});
     setShowResetConfirm(false);
+    setResetConfirmText("");
   };
 
   const week = WEEKS[wIdx];
@@ -689,7 +702,8 @@ export function TrainingPlan() {
             <span style={{ fontSize:9, color:"#4B5563", letterSpacing:1, fontFamily:"'JetBrains Mono',monospace" }}>VIEWING:</span>
             {BLOCKS.map(b => {
               const isSelected = b.id === viewedBlockId;
-              const isTrueActive = b.id === pos.block.id && pos.active;
+              const status = getBlockStatus(b);
+              const statusColor = status === "in progress" ? "#22C55E" : status === "upcoming" ? "#F59E0B" : "#6B7280";
               return (
                 <button key={b.id} onClick={()=>switchBlock(b.id)} style={{
                   padding:"4px 10px", borderRadius:20, fontSize:10, letterSpacing:0.5,
@@ -698,7 +712,7 @@ export function TrainingPlan() {
                   border:isSelected?`1px solid ${ph.c}`:"1px solid rgba(255,255,255,0.1)",
                   color:isSelected?ph.c:"#9CA3AF",
                 }}>
-                  {b.label}{isTrueActive?" ● NOW":""}
+                  {b.label} <span style={{ color: statusColor, opacity: isSelected ? 1 : 0.8, textTransform:"uppercase" }}>· {status}</span>
                 </button>
               );
             })}
@@ -836,20 +850,54 @@ export function TrainingPlan() {
               );
             })}
           </div>
-          {/* Reset button */}
+          {/* Reset button — scoped to whichever block is currently being
+              viewed; a typed confirmation + auto-downloaded backup guard
+              against an accidental wipe of weeks of logged sets. */}
           <div style={{ marginTop:24, borderTop:`1px solid ${BORDER}`, paddingTop:16 }}>
-            {!showResetConfirm?(
-              <button onClick={()=>setShowResetConfirm(true)} style={{ background:"transparent", border:`1px solid rgba(239,68,68,0.3)`, color:"rgba(239,68,68,0.6)", borderRadius:6, padding:"8px 16px", fontFamily:"'JetBrains Mono',monospace", fontSize:11, letterSpacing:1 }}>
-                Reset all progress
-              </button>
-            ):(
-              <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-                <span style={{ fontSize:12, color:"#9CA3AF" }}>Reset ALL set tracking?</span>
-                <button onClick={handleReset} style={{ background:"rgba(239,68,68,0.15)", border:"1px solid rgba(239,68,68,0.4)", color:"#EF4444", borderRadius:6, padding:"6px 14px", fontFamily:"'JetBrains Mono',monospace", fontSize:11 }}>Yes, reset</button>
-                <button onClick={()=>setShowResetConfirm(false)} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.1)", color:"#6B7280", borderRadius:6, padding:"6px 14px", fontFamily:"'JetBrains Mono',monospace", fontSize:11 }}>Cancel</button>
-              </div>
-            )}
+            <button onClick={()=>{setResetConfirmText("");setShowResetConfirm(true);}} style={{ background:"transparent", border:`1px solid rgba(239,68,68,0.3)`, color:"rgba(239,68,68,0.6)", borderRadius:6, padding:"8px 16px", fontFamily:"'JetBrains Mono',monospace", fontSize:11, letterSpacing:1 }}>
+              Reset progress — {viewedBlock.label}
+            </button>
           </div>
+
+          {showResetConfirm && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }} onClick={()=>setShowResetConfirm(false)}>
+              <div style={{ background:"#0F1320", borderRadius:14, padding:"24px 22px", maxWidth:420, width:"100%", border:"1px solid rgba(239,68,68,0.3)" }} onClick={e=>e.stopPropagation()}>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:20, letterSpacing:1, color:"#EF4444", marginBottom:12 }}>
+                  RESET {viewedBlock.label}?
+                </div>
+                <div style={{ fontSize:12, color:"#C9D1E0", lineHeight:1.7, marginBottom:12 }}>
+                  This permanently clears every logged set, weight, cardio checkmark, and note for <b>{viewedBlock.label}</b> only — {BLOCKS.length > 1 ? "your other training block is untouched." : "this cannot be undone."}
+                </div>
+                <div style={{ fontSize:11, color:"#6B7280", lineHeight:1.6, marginBottom:16, padding:"10px 12px", background:"rgba(255,255,255,0.03)", borderRadius:8 }}>
+                  A backup of everything about to be cleared downloads automatically the moment you confirm, so this is recoverable even after the fact.
+                </div>
+                <div style={{ fontSize:11, color:"#9CA3AF", marginBottom:6 }}>Type <b style={{ color:"#F0F4FF" }}>RESET</b> to confirm:</div>
+                <input
+                  type="text"
+                  value={resetConfirmText}
+                  onChange={e=>setResetConfirmText(e.target.value)}
+                  placeholder="RESET"
+                  style={{ width:"100%", height:38, borderRadius:8, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.15)", color:"#F0F4FF", fontSize:14, fontFamily:"'JetBrains Mono',monospace", padding:"0 12px", outline:"none", marginBottom:16 }}
+                />
+                <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+                  <button onClick={()=>setShowResetConfirm(false)} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.1)", color:"#9CA3AF", borderRadius:6, padding:"8px 16px", fontFamily:"'JetBrains Mono',monospace", fontSize:11 }}>Cancel</button>
+                  <button
+                    onClick={handleReset}
+                    disabled={resetConfirmText.trim().toUpperCase() !== "RESET"}
+                    style={{
+                      background: resetConfirmText.trim().toUpperCase()==="RESET" ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.03)",
+                      border: resetConfirmText.trim().toUpperCase()==="RESET" ? "1px solid rgba(239,68,68,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                      color: resetConfirmText.trim().toUpperCase()==="RESET" ? "#EF4444" : "#4B5563",
+                      borderRadius:6, padding:"8px 16px", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:700,
+                      cursor: resetConfirmText.trim().toUpperCase()==="RESET" ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    Download backup &amp; reset
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <div style={{ height:40 }} />
         </div>
       )}

@@ -658,7 +658,7 @@ const BLOCK2_PROG = [
 export const BLOCKS = [
   {
     id: "summer2026",
-    label: "JB'S SUMMER TRAINING PLAN",
+    label: "SUMMER TRAINING PLAN",
     dateRangeLabel: "JUN 1 – AUG 23, 2026",
     startDate: "2026-06-01",
     totalDays: 84, // 12 weeks
@@ -669,7 +669,7 @@ export const BLOCKS = [
   },
   {
     id: "accum2026",
-    label: "ACCUMULATION + CONDITIONING",
+    label: "FALL CONDITIONING PLAN",
     dateRangeLabel: "AUG 31 – OCT 25, 2026",
     startDate: "2026-08-31",
     totalDays: 56, // 8 weeks
@@ -679,6 +679,18 @@ export const BLOCKS = [
     PROG: BLOCK2_PROG,
   },
 ];
+
+// Status label for a block relative to `at`, independent of which block is
+// currently being viewed — used by the block switcher so every block shows
+// where it stands (a block can be "upcoming" or "complete" while a
+// different one is the real-active one).
+export function getBlockStatus(block, at = new Date()) {
+  const start = new Date(block.startDate + "T00:00:00");
+  const diff = Math.floor((at - start) / 86400000);
+  if (diff < 0) return "upcoming";
+  if (diff < block.totalDays) return "in progress";
+  return "complete";
+}
 
 // A previously-saved doc predates multi-block storage if it has the old
 // flat shape (sets/weights/etc at the top level, no `blocks` key). The only

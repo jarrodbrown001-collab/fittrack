@@ -21,13 +21,21 @@ const ex = (n, p, s, note) => ({ n, p, s, note });
 // ═══════════════════════════════════════════════════
 export function canonical(name) {
   const n = name.toLowerCase();
-  if (n.includes("skip") || n.includes("core") || n.includes("upper power")) return null;
+  // "Split squat" (a unilateral accessory, much lighter than a back squat)
+  // must be excluded BEFORE the bare "squat" check below, or it silently
+  // corrupts the Back Squat 1RM history with a garbage low number.
+  if (n.includes("skip") || n.includes("core") || n.includes("upper power") || n.includes("split squat")) return null;
   if (n.includes("romanian") || n.startsWith("rdl")) return "Romanian DL";
   if (n.includes("deadlift")) return "Deadlift";
   if (n.includes("squat")) return "Back Squat";
   if (n.includes("push press")) return "Push Press";
   if (n.includes("bench") || n === "speed bench") return "Bench Press";
-  if (n.includes("overhead press") || (n.includes("press") && !n.includes("push"))) return "Overhead Press";
+  // Every real Overhead Press mention in this app's data literally contains
+  // "overhead press" (or "push press", handled above) — there's no bare
+  // "press" exercise that legitimately needs a fallback. A generic
+  // (name.includes("press")) fallback used to live here and silently
+  // miscounted "DB Incline Press" (a chest accessory) as Overhead Press.
+  if (n.includes("overhead press")) return "Overhead Press";
   if (n.includes("row") || n.includes("pull")) return "Row / Pull-Ups";
   return null;
 }
@@ -451,20 +459,20 @@ const BLOCK1_PROG = [
 // this stretches the reset from ~3-5 days to Aug 24–30. Say the word if a
 // Thursday Aug 27 start is preferred instead and I'll rebuild the calendar.
 const BLOCK2_PH = {
-  1: { name: "ACCUMULATION A", icon: "🔵", c: "#3B82F6", r: "59,130,246", goal: "Build volume tolerance off your Block 1 maxes. Moderate intensity, higher reps (8–12) — sessions should feel productive, not max-effort." },
-  2: { name: "ACCUMULATION B", icon: "🟠", c: "#F97316", r: "249,115,22", goal: "Slight intensity bump with tempo and pause work added for time-under-tension. Still no near-max singles — this builds muscle and tendon resilience, not a new max." },
-  3: { name: "TRANSITION", icon: "🟢", c: "#22C55E", r: "34,197,94", goal: "Step back on volume and intensity. Consolidate 7 weeks of accumulation work and set primary lifts up clean for whatever block comes next." },
+  1: { name: "GROWTH", icon: "🔵", c: "#3B82F6", r: "59,130,246", goal: "Build volume tolerance off your Block 1 maxes. Moderate intensity, higher reps (8–12) — sessions should feel productive, not max-effort." },
+  2: { name: "REFINEMENT", icon: "🟠", c: "#F97316", r: "249,115,22", goal: "Slight intensity bump with tempo and pause work added for time-under-tension. Still no near-max singles — this builds muscle and tendon resilience, not a new max." },
+  3: { name: "RESET", icon: "🟢", c: "#22C55E", r: "34,197,94", goal: "Step back on volume and intensity. Consolidate 7 weeks of accumulation work and set primary lifts up clean for whatever block comes next." },
 };
 
 const BLOCK2_WEEK_FOCUS = {
-  1: "Establish the new 8–12 rep ranges off your Block 1 maxes. DB press bridges the wrist — no barbell pressing at volume yet.",
+  1: "Establish the new 8–12 rep ranges off your Block 1 maxes. Overhead Press returns to barbell from day one — the wrist is fully cleared.",
   2: "Same structure, nudge load where Week 1 was clean.",
-  3: "Volume ramps — add a set on Squat and Row. Transition DB press back to barbell Overhead Press.",
-  4: "Heaviest week of Accumulation A — still comfortably sub-max, this is about total work done.",
-  5: "Accumulation B begins. Reps drop slightly, tempo/pause work adds time-under-tension, Thursday's Zone 3 tempo work gets a real slot.",
+  3: "Volume ramps — add a set on Squat, Row, and Bulgarian Split Squat.",
+  4: "Heaviest week of Growth phase — first strength check on all four lifts confirms your summer maxes are holding under 4 weeks of volume.",
+  5: "Refinement phase begins. Reps drop slightly, tempo/pause work adds time-under-tension, Thursday's Zone 3 tempo work gets a real slot.",
   6: "Same tempo emphasis, incremental load.",
-  7: "Heaviest week of the block — still well shy of anything near-max.",
-  8: "Transition/step-back. Volume and intensity both pull back — arrive fresh for whatever's next.",
+  7: "Heaviest week of the block — second strength check shows the gain since Week 4, still well shy of anything near-max.",
+  8: "Reset week — step back. Volume and intensity both pull back — arrive fresh for whatever's next.",
 };
 
 const BLOCK2_WEEKS = [
@@ -477,14 +485,14 @@ const BLOCK2_WEEKS = [
     {dn:"Tuesday",dt:"Sep 1",type:Z,title:"Zone 2 — Trail/Run",dur:"45 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Real terrain, not the treadmill — training what you'll actually do with the family this fall.",exs:[]},
     {dn:"Wednesday",dt:"Sep 2",type:S,title:"Deadlift & Upper",restNote:"2–3 min",exs:[
       ex("Conv. Deadlift","4 × 8 @ 70%",4,"Conventional stance, no near-max singles this block — this is volume, not testing"),
-      ex("DB Overhead Press","4 × 10 @ 65% OHP",4,"Bridge exercise while the wrist confirms pain-free at lower loads — neutral or semi-supinated grip"),
+      ex("Overhead Press","4 × 10 @ 65%",4,"Wrist fully cleared for barbell — standard grip, full volume week from day one"),
       ex("Pull-Ups / Row","4 × 10",4,"Full range every rep — dead hang to chin over bar"),
     ]},
     {dn:"Thursday",dt:"Sep 3",type:Z,title:"Zone 2/3 — Tempo",dur:"35 min",intensity:"10 min Z2 warm-up, 15 min Z3 tempo (comfortably hard, sentence-only speech), 10 min Z2 cooldown",opts:["Outdoor run","Bike intervals","Rowing intervals"],note:"Zone 3 gets a real seat at the table this block — you're not simultaneously chasing max strength, so it won't interfere.",exs:[]},
     {dn:"Friday",dt:"Sep 4",type:PW,title:"Hypertrophy + Conditioning",restNote:"45–60 sec",exs:[
       ex("DB Incline Press","3 × 12",3,"Controlled tempo, full stretch at the bottom"),
-      ex("Lateral Raise","3 × 15",3,"Light, strict, no swinging — feel the delt work"),
-      ex("Face Pull","3 × 15",3,"Rear delt/upper back — pull to the face, squeeze at the end range"),
+      ex("Bulgarian Split Squat","3 × 10/leg",3,"Compound single-leg work — directly carries over to trail stability and hike prep"),
+      ex("Weighted Dip","3 × 10",3,"Bodyweight if needed early on — compound press, chest/triceps/front delt"),
       ex("Conditioning Finisher","3 rounds — KB swings/carries",3,"Blend of power and conditioning — keep moving, controlled breathing"),
     ]},
     {dn:"Saturday",dt:"Sep 5",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"60–75 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Building the aerobic base for fall trail season.",exs:[]},
@@ -499,7 +507,7 @@ const BLOCK2_WEEKS = [
     {dn:"Tuesday",dt:"Sep 8",type:Z,title:"Zone 2 — Trail/Run",dur:"45 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Same structure as Week 1 — build consistency.",exs:[]},
     {dn:"Wednesday",dt:"Sep 9",type:S,title:"Deadlift & Upper",restNote:"2–3 min",exs:[
       ex("Conv. Deadlift","4 × 8 @ 71%",4,"Small load bump — same conventional stance, no singles"),
-      ex("DB Overhead Press","4 × 10 @ 66% OHP",4,"Final week of the DB bridge before transitioning back to barbell"),
+      ex("Overhead Press","4 × 10 @ 66%",4,"Small load increase — same barbell progression as Week 1"),
       ex("Pull-Ups / Row","4 × 10 — add load",4,"Progressive load — full range every rep"),
     ]},
     {dn:"Thursday",dt:"Sep 10",type:Z,title:"Zone 2/3 — Tempo",dur:"35 min",intensity:"10 min Z2 warm-up, 15 min Z3 tempo (comfortably hard, sentence-only speech), 10 min Z2 cooldown",opts:["Outdoor run","Bike intervals","Rowing intervals"],note:"Same tempo structure as Week 1.",exs:[]},
@@ -507,6 +515,8 @@ const BLOCK2_WEEKS = [
       ex("DB Incline Press","3 × 12 — add load",3,"Where Week 1 was clean, add a small load"),
       ex("Lateral Raise","3 × 15",3,"Same load — priority is clean form, not weight"),
       ex("Face Pull","3 × 15",3,"Same as Week 1 — rear delt/upper back health"),
+      ex("Bulgarian Split Squat","3 × 10/leg",3,"Same as Week 1 — build consistency with the pattern"),
+      ex("Weighted Dip","3 × 10",3,"Same as Week 1"),
       ex("Conditioning Finisher","3 rounds — KB swings/carries",3,"Same structure — focus on smooth, controlled reps"),
     ]},
     {dn:"Saturday",dt:"Sep 12",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"60–75 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Same as Week 1.",exs:[]},
@@ -518,10 +528,10 @@ const BLOCK2_WEEKS = [
       ex("Bench Press","4 × 10 @ 68%",4,"Small load increase — reps hold at 10"),
       ex("Barbell Row","4 × 12",4,"Add a set to match the squat volume bump"),
     ]},
-    {dn:"Tuesday",dt:"Sep 15",type:Z,title:"Zone 2 — Trail/Run",dur:"45 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Same structure as Weeks 1–2.",exs:[]},
+    {dn:"Tuesday",dt:"Sep 15",type:Z,title:"Zone 2 — Trail/Run",dur:"50 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Same structure as Weeks 1–2.",exs:[]},
     {dn:"Wednesday",dt:"Sep 16",type:S,title:"Deadlift & Upper",restNote:"2–3 min",exs:[
       ex("Conv. Deadlift","4 × 10 @ 70%",4,"Reps go up, intensity holds — deadlift accumulates fatigue fast, managing volume deliberately"),
-      ex("Overhead Press","4 × 10 @ 66%",4,"Transitioning back to barbell — the wrist has held up clean at lower DB loads for 2 weeks"),
+      ex("Overhead Press","4 × 10 @ 66%",4,"Same barbell OHP progression as Weeks 1–2 — load ticks up"),
       ex("Pull-Ups / Row","4 × 12",4,"Add reps to match this week's volume bump"),
     ]},
     {dn:"Thursday",dt:"Sep 17",type:Z,title:"Zone 2/3 — Tempo",dur:"35 min",intensity:"10 min Z2 warm-up, 15 min Z3 tempo (comfortably hard, sentence-only speech), 10 min Z2 cooldown",opts:["Outdoor run","Bike intervals","Rowing intervals"],note:"Same tempo structure.",exs:[]},
@@ -529,32 +539,40 @@ const BLOCK2_WEEKS = [
       ex("DB Incline Press","4 × 12",4,"Add a set — volume week carries through Friday too"),
       ex("Lateral Raise","4 × 15",4,"Add a set — keep the load light and strict"),
       ex("Face Pull","3 × 15",3,"Hold steady — this is a maintenance movement, not a progression focus"),
+      ex("Bulgarian Split Squat","4 × 10/leg",4,"Add a set — volume week carries through Friday too"),
+      ex("Weighted Dip","3 × 10 — add load",3,"Small load increase where form stayed clean"),
       ex("Conditioning Finisher","3 rounds — KB swings/carries",3,"Same as Weeks 1–2.",),
     ]},
-    {dn:"Saturday",dt:"Sep 19",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"60–75 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Same as Weeks 1–2.",exs:[]},
-    {dn:"Sunday",dt:"Sep 20",type:R,title:"Rest / Sabbath",note:"Full rest. Highest-volume week of Accumulation A so far — recovery matters.",exs:[]},
+    {dn:"Saturday",dt:"Sep 19",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"75–90 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Same as Weeks 1–2.",exs:[]},
+    {dn:"Sunday",dt:"Sep 20",type:R,title:"Rest / Sabbath",note:"Full rest. Highest-volume week of Growth phase so far — recovery matters.",exs:[]},
   ]},
   {w:4,ph:1,range:"Sep 21–27",days:[
     {dn:"Monday",dt:"Sep 21",type:S,title:"Squat & Bench",restNote:"90 sec–2 min",exs:[
-      ex("Back Squat","4 × 8 @ 73%",4,"Reps pull back to 8 as intensity peaks — heaviest week of Accumulation A"),
-      ex("Bench Press","5 × 10 @ 69%",5,"Add a set — highest bench volume of Accumulation A"),
+      ex("Back Squat","4 × 8 @ 73%",4,"Reps pull back to 8 as intensity peaks — heaviest week of Growth phase"),
+      ex("Bench Press","5 × 10 @ 69%",5,"Add a set — highest bench volume of Growth phase"),
       ex("Barbell Row","4 × 10 — heavier",4,"Load up, reps pull back slightly — same pattern as squat"),
+      ex("Back Squat — Strength Check","1 × 3 @ 88% (test set)",1,"First strength check of the fall — confirm the new summer max is holding under 4 weeks of volume. Take 3+ min full recovery before this set, good bar speed, stop if form breaks down."),
+      ex("Bench Press — Strength Check","1 × 3 @ 85% (test set)",1,"Heavy triple — same intent as the squat check above. Full 3+ min rest beforehand."),
     ]},
-    {dn:"Tuesday",dt:"Sep 22",type:Z,title:"Zone 2 — Trail/Run",dur:"45 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Same structure as prior weeks.",exs:[]},
+    {dn:"Tuesday",dt:"Sep 22",type:Z,title:"Zone 2 — Trail/Run",dur:"50 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Same structure as prior weeks.",exs:[]},
     {dn:"Wednesday",dt:"Sep 23",type:S,title:"Deadlift & Upper",restNote:"2–3 min",exs:[
-      ex("Conv. Deadlift","4 × 8 @ 73%",4,"Heaviest deadlift of Accumulation A — still comfortably sub-max"),
+      ex("Conv. Deadlift","4 × 8 @ 73%",4,"Heaviest deadlift of Growth phase — still comfortably sub-max"),
       ex("Overhead Press","4 × 8 @ 68%",4,"Second week fully back on barbell — load climbing cleanly"),
-      ex("Pull-Ups / Row","4 × 10 — add load",4,"Heaviest pulling of Accumulation A"),
+      ex("Pull-Ups / Row","4 × 10 — add load",4,"Heaviest pulling of Growth phase"),
+      ex("Conv. Deadlift — Strength Check","1 × 2 @ 88% (test set)",1,"First strength check of the fall — one heavy top set off your new summer max. Full 3+ min recovery, clean setup, this is a checkpoint not a max attempt."),
+      ex("Overhead Press — Strength Check","1 × 3 @ 82% (test set)",1,"Heavy triple after the deadlift check. Take the full 3+ min rest first."),
     ]},
     {dn:"Thursday",dt:"Sep 24",type:Z,title:"Zone 2/3 — Tempo",dur:"35 min",intensity:"10 min Z2 warm-up, 15 min Z3 tempo (comfortably hard, sentence-only speech), 10 min Z2 cooldown",opts:["Outdoor run","Bike intervals","Rowing intervals"],note:"Same tempo structure.",exs:[]},
     {dn:"Friday",dt:"Sep 25",type:PW,title:"Hypertrophy + Conditioning",restNote:"45–60 sec",exs:[
       ex("DB Incline Press","3 × 10 — heavier",3,"Reps pull back, load climbs — same pattern as the primary lifts this week"),
       ex("Lateral Raise","3 × 15 — add load",3,"Small load increase, keep it strict"),
       ex("Face Pull","3 × 15",3,"Hold steady.",),
-      ex("Conditioning Finisher","4 rounds — KB swings/carries",4,"One more round — Accumulation A peak week."),
+      ex("Bulgarian Split Squat","3 × 10/leg — add load",3,"Reps pull back to normal, load climbs — same pattern as the primary lifts this week"),
+      ex("Weighted Dip","3 × 10 — heavier",3,"Load climbs alongside the rest of the session"),
+      ex("Conditioning Finisher","4 rounds — KB swings/carries",4,"One more round — Growth phase peak week."),
     ]},
-    {dn:"Saturday",dt:"Sep 26",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"60–75 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Final long hike of Accumulation A.",exs:[]},
-    {dn:"Sunday",dt:"Sep 27",type:R,title:"Rest / Sabbath",note:"Full rest. Accumulation A complete — 4 weeks of volume banked. Tempo/pause work begins Week 5.",exs:[]},
+    {dn:"Saturday",dt:"Sep 26",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"75–90 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Final long hike of Growth phase.",exs:[]},
+    {dn:"Sunday",dt:"Sep 27",type:R,title:"Rest / Sabbath",note:"Full rest. Growth phase complete — 4 weeks of volume banked. Tempo/pause work begins Week 5.",exs:[]},
   ]},
   {w:5,ph:2,range:"Sep 28 – Oct 4",days:[
     {dn:"Monday",dt:"Sep 28",type:S,title:"Squat & Bench",restNote:"90 sec–2 min",exs:[
@@ -573,6 +591,8 @@ const BLOCK2_WEEKS = [
       ex("DB Incline Press","3 × 10 — tempo",3,"3s controlled lower on every rep"),
       ex("Lateral Raise","3 × 12 — heavier",3,"Reps pull back slightly, load climbs"),
       ex("Face Pull","3 × 15",3,"Hold steady.",),
+      ex("Bulgarian Split Squat","3 × 8/leg — tempo",3,"3s controlled lower on every rep — reps drop, tempo emphasis matches the rest of the session"),
+      ex("Weighted Dip","3 × 8 — tempo",3,"3s controlled lower on every rep"),
       ex("Conditioning Finisher","4 rounds — KB swings/carries",4,"Same as Week 4.",),
     ]},
     {dn:"Saturday",dt:"Oct 3",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"75–90 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Building endurance further into Accumulation B.",exs:[]},
@@ -584,7 +604,7 @@ const BLOCK2_WEEKS = [
       ex("Bench Press","4 × 8 @ 72%",4,"Same tempo — small load increase"),
       ex("Barbell Row","4 × 10 — add load",4,"Same tempo emphasis"),
     ]},
-    {dn:"Tuesday",dt:"Oct 6",type:Z,title:"Zone 2 — Trail/Run",dur:"50 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Same as Week 5.",exs:[]},
+    {dn:"Tuesday",dt:"Oct 6",type:Z,title:"Zone 2 — Trail/Run",dur:"55 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Same as Week 5.",exs:[]},
     {dn:"Wednesday",dt:"Oct 7",type:S,title:"Deadlift & Upper",restNote:"2–3 min",exs:[
       ex("Conv. Deadlift","4 × 6 @ 76%",4,"Small load increase — still no near-max singles"),
       ex("Overhead Press","4 × 8 @ 71%",4,"Same tempo — small load increase"),
@@ -595,32 +615,40 @@ const BLOCK2_WEEKS = [
       ex("DB Incline Press","3 × 10 — add load",3,"Small load increase, tempo holds"),
       ex("Lateral Raise","3 × 12 — add load",3,"Small load increase"),
       ex("Face Pull","3 × 15",3,"Hold steady.",),
+      ex("Bulgarian Split Squat","3 × 8/leg — add load",3,"Small load increase, tempo holds"),
+      ex("Weighted Dip","3 × 8 — add load",3,"Small load increase, tempo holds"),
       ex("Conditioning Finisher","4 rounds — KB swings/carries",4,"Same as Week 5.",),
     ]},
-    {dn:"Saturday",dt:"Oct 10",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"75–90 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Same as Week 5.",exs:[]},
+    {dn:"Saturday",dt:"Oct 10",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"90–105 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Same as Week 5.",exs:[]},
     {dn:"Sunday",dt:"Oct 11",type:R,title:"Rest / Sabbath",note:"Full rest. Two weeks of tempo work banked.",exs:[]},
   ]},
   {w:7,ph:2,range:"Oct 12–18",days:[
     {dn:"Monday",dt:"Oct 12",type:S,title:"Squat & Bench",restNote:"90 sec–2 min",exs:[
       ex("Back Squat","4 × 8 @ 78%",4,"Heaviest week of the block — still well shy of anything near-max"),
-      ex("Bench Press","4 × 8 @ 74%",4,"Heaviest bench of Accumulation B"),
+      ex("Bench Press","4 × 8 @ 74%",4,"Heaviest bench of Refinement phase"),
       ex("Barbell Row","4 × 8 — heaviest",4,"Reps pull back to 8 as this week's load peaks"),
+      ex("Back Squat — Strength Check","1 × 2 @ 91% (test set)",1,"Second strength check of the block — see the gain since Week 4. Full 3+ min recovery, good bar speed, no grinding."),
+      ex("Bench Press — Strength Check","1 × 2 @ 88% (test set)",1,"Heavy double — same intent as the squat check above. Full 3+ min rest."),
     ]},
-    {dn:"Tuesday",dt:"Oct 13",type:Z,title:"Zone 2 — Trail/Run",dur:"50 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Same as Weeks 5–6.",exs:[]},
+    {dn:"Tuesday",dt:"Oct 13",type:Z,title:"Zone 2 — Trail/Run",dur:"55 min",intensity:"Conversational-pace trail run or brisk hike, nasal breathing",opts:["Trail run","Brisk hike","Neighborhood run"],note:"Same as Weeks 5–6.",exs:[]},
     {dn:"Wednesday",dt:"Oct 14",type:S,title:"Deadlift & Upper",restNote:"2–3 min",exs:[
       ex("Conv. Deadlift","4 × 6 @ 78%",4,"Heaviest deadlift of the block — the rule holds: no near-max singles in accumulation"),
       ex("Overhead Press","4 × 8 @ 73%",4,"Heaviest OHP of the block"),
       ex("Pull-Ups / Row","4 × 8 — heaviest",4,"Heaviest pulling of the block"),
+      ex("Conv. Deadlift — Strength Check","1 × 1 @ 91% (test set)",1,"One heavy single — full 3+ min rest before it, crisp brace and setup. Not a true max, just confirming where you stand under 7 weeks of volume/tempo fatigue."),
+      ex("Overhead Press — Strength Check","1 × 2 @ 85% (test set)",1,"Heavy double after the deadlift check — stay strict, no layback. Full 3+ min rest beforehand."),
     ]},
     {dn:"Thursday",dt:"Oct 15",type:Z,title:"Zone 2/3 — Tempo",dur:"40 min",intensity:"10 min Z2 warm-up, 20 min Z3 tempo (comfortably hard, sentence-only speech), 10 min Z2 cooldown",opts:["Outdoor run","Bike intervals","Rowing intervals"],note:"Same structure as Weeks 5–6.",exs:[]},
     {dn:"Friday",dt:"Oct 16",type:PW,title:"Hypertrophy + Conditioning",restNote:"45–60 sec",exs:[
       ex("DB Incline Press","3 × 8 — heaviest",3,"Reps pull back to 8 as load peaks"),
       ex("Lateral Raise","3 × 12",3,"Hold steady — this is a maintenance movement.",),
       ex("Face Pull","3 × 15",3,"Hold steady.",),
+      ex("Bulgarian Split Squat","3 × 8/leg — heaviest",3,"Reps pull back to 8 as load peaks — matches the rest of this week"),
+      ex("Weighted Dip","3 × 8 — heaviest",3,"Heaviest dip load of the block"),
       ex("Conditioning Finisher","4 rounds — KB swings/carries",4,"Same as Weeks 5–6.",),
     ]},
-    {dn:"Saturday",dt:"Oct 17",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"75–90 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Final long hike before the step-back week.",exs:[]},
-    {dn:"Sunday",dt:"Oct 18",type:R,title:"Rest / Sabbath",note:"Full rest. Accumulation complete — 7 weeks of volume and tempo work banked. Transition week next.",exs:[]},
+    {dn:"Saturday",dt:"Oct 17",type:Z,title:"Zone 2 — Long Hike/Ruck",dur:"105–120 min",intensity:"Easy pace, hilly terrain if available",opts:["Long hike","Rucking","Trail run"],note:"Final long hike before the step-back week.",exs:[]},
+    {dn:"Sunday",dt:"Oct 18",type:R,title:"Rest / Sabbath",note:"Full rest. Accumulation complete — 7 weeks of volume and tempo work banked. Reset week next.",exs:[]},
   ]},
   {w:8,ph:3,range:"Oct 19–25",days:[
     {dn:"Monday",dt:"Oct 19",type:S,title:"Squat & Bench (Step-Back)",restNote:"90 sec–2 min",exs:[
@@ -639,6 +667,8 @@ const BLOCK2_WEEKS = [
       ex("DB Incline Press","3 × 12 — light",3,"Easy movement — no intensity"),
       ex("Lateral Raise","2 × 15 — light",2,"Light and easy",),
       ex("Face Pull","2 × 15 — light",2,"Light and easy",),
+      ex("Bulgarian Split Squat","2 × 10/leg — light",2,"Light and easy — full taper"),
+      ex("Weighted Dip","2 × 10 — light",2,"Light and easy — full taper"),
       ex("Conditioning Finisher","2 rounds — KB swings/carries",2,"Scaled back — easy effort only.",),
     ]},
     {dn:"Saturday",dt:"Oct 24",type:Z,title:"Zone 2 — Easy",dur:"45 min",intensity:"Easy — whatever sounds enjoyable",opts:["Outdoor walk","Bike ride","Trail run"],note:"Optional easy outing. Celebrate completing 8 weeks!",exs:[]},
